@@ -109,6 +109,17 @@ def _manifest_signals(dirpath: Path, c: Candidate) -> None:
                 except Exception:
                     pass
 
+    # Librarian Manifest Detection
+    lib_path = dirpath / ".librarian" / "manifest.json"
+    if lib_path.exists():
+        c.evidence.append(Evidence("librarian:manifest", "Shesha/Librarian manifest detected", 100))
+        try:
+            data = json.loads(_read_text_safe(lib_path))
+            c.install_mode = data.get("install_mode", "dev")
+            c.remote_url = data.get("remote_url")
+        except:
+            pass
+
 
 def _readme_signals(dirpath: Path, c: Candidate) -> None:
     for rf in READ_ME_FILES:

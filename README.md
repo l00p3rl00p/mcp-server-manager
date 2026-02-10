@@ -148,19 +148,21 @@ This acts as a "Strong Signal" that skips the review bucket and auto-accepts dur
 
 ---
 
-## 🤝 Git-Packager Workspace
+## 🤝 Git-Packager Workforce Suite
 
-Part of the **Git-Packager** suite:
+This tool is the **Observer (Monitor)** for the complete four-component workforce ecosystem:
 
-| Tool | Purpose |
-|------|--------|
-| **mcp-injector** | Safely manage MCP server configs in IDE JSON files |
-| **mcp-server-manager** (this tool) | Discover and track MCP servers across your system |
-| **repo-mcp-packager** | Install and package MCP servers with automation |
+| Tool | Persona | Purpose |
+| --- | --- | --- |
+| **mcp-injector** | The Surgeon | Safely manage MCP server configs in IDE JSON files |
+| **mcp-server-manager** | The Observer | Discover, track, and monitor health of all MCP servers |
+| **repo-mcp-packager** | The Activator | Install, package, and update MCP servers with automation |
+| **mcp-link-library** | The Librarian | Curated knowledge base and document engine for AI tools |
 
-### Integrated Usage
-* **mcpinv bootstrap**: Checks for and fetches missing workspace components.
-* **Attach to IDE**: Use the inventory from `mcpinv` to drive `mcp-injector` for one-click IDE setup.
+### Integrated Benefits
+* **Universal Bootstrapping**: `mcpinv bootstrap` aligns and fetches all 4 tools.
+* **One-Click Lifecycle**: Launch `update` directly from the inventory dashboard.
+* **Knowledge Health**: Dashboard monitors Librarian data integrity and index status.
 
 ---
 

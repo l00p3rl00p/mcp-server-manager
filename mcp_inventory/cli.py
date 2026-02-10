@@ -82,6 +82,8 @@ def _candidate_to_entry(c) -> InventoryEntry:
         ports=sorted(set(c.ports)),
         env_files=c.env_files,
         run=run,
+        install_mode=c.install_mode,
+        remote_url=c.remote_url,
         evidence=[{"kind": ev.kind, "detail": ev.detail, "weight": ev.weight} for ev in c.evidence],
     )
     return entry
@@ -210,6 +212,28 @@ def cmd_health(args: argparse.Namespace) -> int:
         checks.append({"name": "runtime", "status": "ok", "message": f"{len(snap)} running observations"})
     except Exception as e:
         checks.append({"name": "runtime", "status": "warning", "message": f"Runtime check failed: {e}"})
+
+    # Check Librarian (mcp-link-library) if present
+    try:
+        # Search for librarian in sibling or standard paths
+        lib_path = Path(__file__).parent.parent.parent / "mcp-link-library"
+        verify_script = lib_path / "verify.py"
+        if verify_script.exists():
+            import subprocess
+            res = subprocess.run([sys.executable, str(verify_script), "--json"], capture_output=True, text=True)
+            if res.returncode == 0:
+                lib_data = json.loads(res.stdout)
+                # Flatten librarian checks into global list
+                for check in lib_data["checks"]:
+                    checks.append({
+                        "name": f"lib:{check['name']}",
+                        "status": check["status"],
+                        "message": check["message"]
+                    })
+            else:
+                 checks.append({"name": "librarian", "status": "error", "message": "verify.py failed"})
+    except Exception as e:
+        checks.append({"name": "librarian", "status": "warning", "message": f"Discovery failed: {e}"})
 
     write_health_snapshot(checks)
     

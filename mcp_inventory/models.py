@@ -27,6 +27,8 @@ class Candidate:
     ports: List[int] = field(default_factory=list)
     env_files: List[str] = field(default_factory=list)
     transport: str = "unknown"  # http|ws|stdio|unknown
+    install_mode: str = "dev"
+    remote_url: Optional[str] = None
     score: int = 0
 
 
@@ -61,6 +63,8 @@ class InventoryEntry:
     env_files: List[str] = field(default_factory=list)
     run: InventoryRun = field(default_factory=lambda: InventoryRun(kind="unknown"))
     tags: List[str] = field(default_factory=list)
+    install_mode: str = "dev"  # managed | dev
+    remote_url: Optional[str] = None
     notes: str = ""
     added_on: str = field(default_factory=utc_now_iso)
     last_seen: Optional[str] = None

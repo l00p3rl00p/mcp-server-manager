@@ -6,7 +6,12 @@ const API_BASE = '/api';
 const state = {
     health: null,
     inventory: [],
-    logs: []
+    logs: [],
+    wizard: {
+        active: false,
+        logName: null,
+        timer: null
+    }
 };
 
 // --- DOM Elements ---
@@ -15,7 +20,14 @@ const els = {
     healthMetrics: document.getElementById('health-metrics'),
     inventoryTableBody: document.querySelector('#inventory-table tbody'),
     inventoryCount: document.getElementById('inventory-count'),
-    logViewer: document.getElementById('log-viewer')
+    logViewer: document.getElementById('log-viewer'),
+    // Wizard components
+    wizard: document.getElementById('action-wizard'),
+    wizardLogs: document.getElementById('wizard-logs'),
+    wizardStatus: document.getElementById('wizard-status'),
+    wizardProgress: document.getElementById('wizard-progress'),
+    wizardDoneBtn: document.getElementById('wizard-done-btn'),
+    wizardTitle: document.getElementById('wizard-title')
 };
 
 // --- Fetch Data ---
@@ -65,36 +77,137 @@ async function fetchLogs() {
     }
 }
 
-// --- Actions ---
+// --- Action Wizard Core Logic ---
 
-async function triggerAction(command) {
-    updateSystemStatus(`Running ${command}...`, "status-warn");
+/**
+ * Triggers a server action and opens the Wizard overlay for monitoring.
+ * This is the main bridge between the UI and the Shesha CLI.
+ * 
+ * @param {string} command - The command to run (scan, health, update, etc.)
+ * @param {Object} body - Optional POST body (e.g., {path: '...'})
+ */
+async function triggerAction(command, body = null) {
+    // 1. Reset and Show Wizard UI immediately for responsiveness
+    openWizard(command);
+
     try {
-        const res = await fetch(`${API_BASE}/action/${command}`, { method: 'POST' });
+        const fetchOpts = { method: 'POST' };
+        if (body) {
+            fetchOpts.headers = { 'Content-Type': 'application/json' };
+            fetchOpts.body = JSON.stringify(body);
+        }
+
+        // 2. Start the remote process via the API
+        const res = await fetch(`${API_BASE}/action/${command}`, fetchOpts);
         const data = await res.json();
 
-        if (data.success) {
-            // Refresh data after action
-            // specific refreshes based on command
-            if (command === 'health') fetchHealth();
-            if (command === 'scan') fetchInventory();
-            if (command === 'running') fetchHealth(); // running updates runtime snapshot which health checks uses? 
-            // actually health check runs running_snapshot internally.
-
-            // Allow some time for file writes if needed, but the server action waits for subprocess.
-            setTimeout(() => {
-                fetchAll();
-            }, 500);
-
-            updateSystemStatus("Ready", "status-ok");
+        if (data.success && data.action_log_name) {
+            // 3. The server returned a log filename for this specific execution.
+            // Begin polling this file for incremental updates.
+            state.wizard.logName = data.action_log_name;
+            startWizardPolling();
         } else {
-            alert(`Command failed:\n${data.stderr}`);
-            updateSystemStatus("Error", "status-error");
+            setWizardError(data.stderr || "Failed to start process");
         }
     } catch (e) {
-        console.error("Action trigger failed", e);
-        updateSystemStatus("Error", "status-error");
+        setWizardError(`Connection failed: ${e.message}`);
     }
+}
+
+/** Prepares the modal UI for a new action run */
+function openWizard(title) {
+    state.wizard.active = true;
+    els.wizardTitle.textContent = title.toUpperCase();
+    els.wizardStatus.textContent = "Launching CLI...";
+    els.wizardLogs.innerHTML = '<div style="color: #666">> Initializing workforce pipeline...</div>';
+    els.wizardProgress.style.width = '10%';
+    els.wizardDoneBtn.style.display = 'none';
+    els.wizard.style.display = 'flex';
+}
+
+/** Closes the wizard and triggers a full dashboard refresh to show new data */
+function closeWizard() {
+    state.wizard.active = false;
+    if (state.wizard.timer) clearInterval(state.wizard.timer);
+    els.wizard.style.display = 'none';
+    fetchAll(); // Refresh inventory and status
+}
+
+/** Displays a critical error message inside the wizard */
+function setWizardError(msg) {
+    els.statusBadge.textContent = "Error"; // Update top-bar status too
+    els.wizardStatus.textContent = "Operation Failed";
+    els.wizardStatus.style.color = "var(--error-color)";
+    els.wizardLogs.innerHTML += `<div style="color:var(--error-color); margin-top:10px;">[!] ${msg}</div>`;
+    els.wizardDoneBtn.style.display = 'block';
+    els.wizardProgress.style.backgroundColor = 'var(--error-color)';
+}
+
+/** 
+ * Polls the specific action log file every second.
+ * This allows the UI to 'tail' the subprocess output in real-time.
+ */
+function startWizardPolling() {
+    if (state.wizard.timer) clearInterval(state.wizard.timer);
+
+    state.wizard.timer = setInterval(async () => {
+        if (!state.wizard.active) return;
+
+        try {
+            const res = await fetch(`${API_BASE}/logs/${state.wizard.logName}`);
+            const data = await res.json();
+
+            if (data.lines) {
+                renderWizardLines(data.lines);
+            }
+        } catch (e) {
+            console.error("Wizard poll failed", e);
+        }
+    }, 1000);
+}
+
+/**
+ * Parses raw CLI output and structured JSON_LOG markers.
+ * Updates progress bar and status message based on lifecycle events.
+ */
+function renderWizardLines(lines) {
+    let html = '';
+    let progress = 20;
+
+    lines.forEach(line => {
+        // Detect and parse machine-readable markers emitted by install.py --machine
+        if (line.includes('JSON_LOG:')) {
+            try {
+                const jsonPart = line.split('JSON_LOG:')[1];
+                const entry = JSON.parse(jsonPart);
+
+                // Map lifecycle events to progress percentages
+                if (entry.event === 'update_start') progress = 30;
+                if (entry.event === 'git_pull_success') progress = 60;
+                if (entry.event === 'deps_refresh') progress = 80;
+                if (entry.event === 'update_complete' || entry.event === 'scan_complete') {
+                    progress = 100;
+                    els.wizardStatus.textContent = "Operation Complete";
+                    els.wizardDoneBtn.style.display = 'block';
+                }
+
+                // Prettify the structured log for the wizard window
+                html += `<div><span class="event-tag">${entry.event.toUpperCase()}</span> ${entry.message}</div>`;
+                els.wizardStatus.textContent = entry.message;
+            } catch (e) {
+                html += `<div style="color:#444">${line}</div>`;
+            }
+        } else if (line.trim()) {
+            // Echo standard stdout/stderr lines
+            if (!line.startsWith('---')) { // Skip the command header line
+                html += `<div>${line}</div>`;
+            }
+        }
+    });
+
+    els.wizardLogs.innerHTML = html;
+    els.wizardLogs.scrollTop = els.wizardLogs.scrollHeight; // Auto-scroll to latest
+    els.wizardProgress.style.width = `${progress}%`;
 }
 
 async function runHealthCheck() {
@@ -140,20 +253,40 @@ function renderInventory() {
 
     state.inventory.forEach(entry => {
         const tr = document.createElement('tr');
+        if (entry.install_mode === 'managed') {
+            tr.classList.add('row-managed');
+        }
 
-        // Determine status style
-        // We don't have real-time status in inventory entry unless we correlate with runtime.
-        // For now, just show what's in the entry.
+        const isManaged = entry.install_mode === 'managed';
+        const remoteInfo = entry.remote_url ? `<div class="sub-text">${entry.remote_url}</div>` : '';
+
+        const updateBtn = isManaged
+            ? `<button class="btn-sm primary" onclick="updateServer('${entry.id}', '${entry.path.replace(/\\/g, '/')}')">Update</button>`
+            : '';
 
         tr.innerHTML = `
-            <td><strong>${entry.name || entry.id}</strong></td>
-            <td>unknown</td> 
+            <td>
+                <div><strong>${entry.name || entry.id}</strong></div>
+                ${isManaged ? '<span class="badge-sm badge-managed">MANAGED</span>' : ''}
+            </td>
+            <td>${entry.status || 'unknown'}</td> 
             <td>${entry.confidence}</td>
             <td>${entry.transport || '-'}</td>
-            <td style="color: #666; font-size: 0.85rem;">${entry.path || ''}</td>
+            <td style="color: #666; font-size: 0.85rem;">
+                ${entry.path || ''}
+                ${remoteInfo}
+            </td>
+            <td>${updateBtn}</td>
         `;
         tbody.appendChild(tr);
     });
+}
+
+function updateServer(id, path) {
+    if (!confirm(`Are you sure you want to update ${id}?\n\nThis will pull the latest code and refresh dependencies.`)) {
+        return;
+    }
+    triggerAction('update', { server_id: id, path: path });
 }
 
 function renderLogs() {
@@ -172,7 +305,18 @@ function renderLogs() {
 
         // Format message - if it has props, show them?
         let msg = log.message;
-        if (log.event) {
+
+        // Machine-readable log handling
+        if (msg.startsWith("JSON_LOG:")) {
+            try {
+                const parsed = JSON.parse(msg.substring(9));
+                msg = `<span class="event-tag">${parsed.event.toUpperCase()}</span> ${parsed.message}`;
+                if (parsed.data && Object.keys(parsed.data).length > 0) {
+                    msg += ` <span class="log-msg-json">${JSON.stringify(parsed.data)}</span>`;
+                }
+                div.classList.add(`event-${parsed.event}`);
+            } catch (e) { }
+        } else if (log.event) {
             msg = `[${log.event}] ${msg}`;
             // If extra fields
             const extras = { ...log };

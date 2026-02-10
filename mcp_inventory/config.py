@@ -3,8 +3,13 @@ import json
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import List
+import sys
+import os
 
-APP_DIR = Path.home() / ".mcpinv"
+if sys.platform == "win32":
+    APP_DIR = Path(os.environ['USERPROFILE']) / ".mcp-tools" / "mcp-server-manager"
+else:
+    APP_DIR = Path.home() / ".mcp-tools" / "mcp-server-manager"
 CONFIG_PATH = APP_DIR / "config.json"
 INVENTORY_PATH = APP_DIR / "inventory.yaml"
 STATE_DIR = APP_DIR / "state"
