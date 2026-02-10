@@ -25,6 +25,7 @@ import sys
 import json
 import urllib.request
 import urllib.error
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
@@ -49,6 +50,27 @@ COMPONENTS = {
         "description": "Universal MCP server installer and packager"
     }
 }
+
+# Security: GitHub URL validation pattern
+GITHUB_URL_PATTERN = re.compile(
+    r'^https://github\.com/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+\.git$'
+)
+
+
+def validate_github_url(url: str) -> bool:
+    """
+    Validate that a URL is a safe GitHub repository URL.
+    
+    Security: Prevents command injection by ensuring URL matches expected pattern.
+    Only allows HTTPS GitHub URLs with alphanumeric org/repo names.
+    
+    Args:
+        url: The URL to validate
+        
+    Returns:
+        True if URL is valid and safe, False otherwise
+    """
+    return GITHUB_URL_PATTERN.match(url) is not None
 
 
 @dataclass
@@ -155,6 +177,8 @@ class WorkspaceResolver:
         """
         Fetch a component from GitHub using git clone.
         
+        Security: Validates URL before executing git clone to prevent command injection.
+        
         Args:
             component_name: Name of the component to fetch
             target_dir: Directory to clone into
@@ -167,26 +191,42 @@ class WorkspaceResolver:
         config = COMPONENTS[component_name]
         repo_url = f"https://github.com/{config['repo']}.git"
         
+        # Security: Validate URL before using it
+        if not validate_github_url(repo_url):
+            print(f"❌ Security: Invalid repository URL: {repo_url}")
+            print(f"   URL must match pattern: https://github.com/org/repo.git")
+            return False
+        
         print(f"\n📦 Fetching {component_name} from GitHub...")
         print(f"   URL: {repo_url}")
         print(f"   Target: {target_dir}")
         
         try:
-            # Use git clone
+            # Use git clone with validated URL
             result = subprocess.run(
                 ["git", "clone", repo_url, str(target_dir)],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                timeout=300  # 5 minute timeout for network operations
             )
             print(f"✅ Successfully cloned {component_name}")
             return True
+        except subprocess.TimeoutExpired:
+            print(f"❌ Timeout: Git clone took longer than 5 minutes")
+            print(f"   Check your network connection and try again")
+            return False
         except subprocess.CalledProcessError as e:
             print(f"❌ Failed to clone {component_name}")
             print(f"   Error: {e.stderr}")
+            if "could not resolve host" in e.stderr.lower():
+                print(f"   Hint: Check your internet connection")
+            elif "repository not found" in e.stderr.lower():
+                print(f"   Hint: Repository may be private or doesn't exist")
             return False
         except FileNotFoundError:
             print(f"❌ Git not found. Please install git to fetch components.")
+            print(f"   Install: brew install git (macOS) or apt-get install git (Linux)")
             return False
 
 
