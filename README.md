@@ -1,14 +1,15 @@
 # Local MCP-Server Discovery + Inventory (mcpinv)
 
-**A scan-wide / accept-strict tool for managing MCP servers across your machine.**
+**A scan-wide / accept-strict tool for managing MCP servers across your machine—now with a built-in GUI dashboard.**
 
-Never lose track of an MCP server again. `mcpinv` discovers, validates, and inventories your MCP servers with high precision and low noise.
+Never lose track of an MCP server again. `mcpinv` discovers, validates, and inventories your MCP servers with high precision and low noise. It includes both a powerful CLI and a lightweight web-based GUI for visual management.
 
 ---
 
 ## ⚡ Quick Start
 
 ### 1. Installation
+The GUI is automatically installed alongside the CLI.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -24,19 +25,27 @@ mcpinv config --add-root ~/Developer
 mcpinv scan
 ```
 
+### 3. Launch the GUI (Optional)
+If you prefer visual management, launch the dashboard:
+```bash
+mcpinv gui
+```
+Then open [http://localhost:8501](http://localhost:8501) in your browser.
+
 ---
 
 ## 📋 Table of Contents
 
 1. [Overview](#-overview)
 2. [Features](#-features)
-3. [The Scan → Gate → Accept Workflow](#-the-scan--gate--accept-workflow)
-4. [Inventory Management](#-inventory-management)
-5. [Heartbeat & Running Status](#-heartbeat--running-status)
-6. [Standardizing with mcp.server.json](#-standardizing-with-mcpserverjson)
-7. [Git-Packager Workspace](#-git-packager-workspace)
-8. [Contributing](#-contributing)
-9. [License](#-license)
+3. [GUI Dashboard](#-gui-dashboard)
+4. [The Scan → Gate → Accept Workflow](#-the-scan--gate--accept-workflow)
+5. [Inventory Management](#-inventory-management)
+6. [Heartbeat & Running Status](#-heartbeat--running-status)
+7. [Standardizing with mcp.server.json](#-standardizing-with-mcpserverjson)
+8. [Git-Packager Workspace](#-git-packager-workspace)
+9. [Contributing](#-contributing)
+10. [License](#-license)
 
 ---
 
@@ -52,9 +61,27 @@ The goal is to provide a curated, human-editable `inventory.yaml` that serves as
 
 * **Intelligent Scanning**: Uses broad triggers (.env, Dockerfile, etc.) to find candidates.
 * **Strict Gating**: Auto-accepts strong signals, flags medium signals for review, and rejects noise.
+* **Built-in GUI Dashboard**: Visualize your inventory, scan results, and server health.
 * **Human-Editable Inventory**: Authoritative list stored in `~/.mcpinv/inventory.yaml`.
 * **Heartbeat Visibility**: Detects running Docker containers and MCP-related processes.
 * **Explainability**: Shows *why* a folder was detected as an MCP server.
+
+---
+
+## 📊 GUI Dashboard
+
+The GUI is a lightweight web interface that provides high-level visibility into your MCP ecosystem.
+
+### How to use it:
+* **Launch**: Run `mcpinv gui` in your terminal.
+* **Access**: Navigate to `http://localhost:8501`.
+* **Optional**: The GUI is a companion to the CLI; you can perform almost all actions from either interface.
+
+### What it shows:
+1. **Application Health**: Current state, last successful run, and mode.
+2. **Inventory Status**: Visual list of confirmed, review-worthy, and rejected servers.
+3. **Heartbeat & Signals**: Real-time view of what is likely running on your system.
+4. **Command Execution**: Timeline and outcomes of recent discovery runs.
 
 ---
 
@@ -81,7 +108,7 @@ Medium-confidence candidates (e.g., README says MCP but code is unclear) are pla
 
 ## 🗃 Inventory Management
 
-Your inventory is stored at `~/.mcpinv/inventory.yaml`. You can edit it by hand or use the CLI:
+Your inventory is stored at `~/.mcpinv/inventory.yaml`. You can edit it by hand or use the CLI/GUI:
 
 ```bash
 # Add something manually if detection missed it
@@ -97,7 +124,11 @@ mcpinv add --name browser-agent --path "/Users/me/code/browser-agent" --compose 
 
 Check which servers are likely running right now:
 ```bash
+# Via CLI
 mcpinv running
+
+# Via GUI
+# View the health dashboard at http://localhost:8501
 ```
 This performs a best-effort check of Docker containers and OS processes to provide visibility into your active tools.
 
