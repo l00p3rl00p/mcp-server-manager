@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Server Manager</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="top-bar">
+            <div class="logo">MCP Manager</div>
+            <div id="system-status" class="status-badge">Checking...</div>
+        </header>
+
+        <main class="dashboard-grid">
+            <!-- Health Section -->
+            <section class="card health-card">
+                <div class="card-header">
+                    <h2>System Health</h2>
+                    <button class="btn-icon" onclick="runHealthCheck()" title="Run Health Check">🔄</button>
+                </div>
+                <div id="health-metrics" class="metrics-grid">
+                    <!-- Populated by JS -->
+                    <div class="loading">Loading health data...</div>
+                </div>
+            </section>
+
+            <!-- Actions / Quick Commands -->
+            <section class="card actions-card">
+                <div class="card-header">
+                    <h2>Quick Actions</h2>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn primary" onclick="triggerAction('scan')">Full Scan</button>
+                    <button class="btn secondary" onclick="triggerAction('running')">Check Running</button>
+                    <!-- <button class="btn secondary" onclick="triggerAction('config')">Edit Config</button> -->
+                </div>
+            </section>
+
+            <!-- Inventory Section -->
+            <section class="card inventory-card full-width">
+                <div class="card-header">
+                    <h2>Inventory</h2>
+                    <span id="inventory-count" class="badge">0</span>
+                </div>
+                <div class="table-container">
+                    <table id="inventory-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Confidence</th>
+                                <th>Transport</th>
+                                <th>Path</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Logs / Execution Section -->
+            <section class="card logs-card full-width">
+                <div class="card-header">
+                    <h2>Recent Activity</h2>
+                    <button class="btn-sm" onclick="fetchLogs()">Refresh</button>
+                </div>
+                <div id="log-viewer" class="log-viewer">
+                    <!-- Populated by JS -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

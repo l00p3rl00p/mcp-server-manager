@@ -10,6 +10,8 @@ from .gate import decide
 from .models import InventoryEntry, InventoryRun, Evidence
 from .runtime import running_snapshot
 from .util import slugify
+from .logger import setup_logging, log_event
+from .state import write_inventory_snapshot, write_runtime_snapshot, write_health_snapshot
 
 
 def _print_kv(title: str, value: str) -> None:
@@ -34,6 +36,7 @@ def cmd_config(args: argparse.Namespace) -> int:
     if args.deep is not None:
         cfg.deep_scan = bool(args.deep)
         save_config(cfg)
+        log_event("config_updated", {"deep_scan": cfg.deep_scan})
         print("Updated deep_scan.")
         return 0
     return 0
@@ -113,6 +116,9 @@ def cmd_inventory_scan(args: argparse.Namespace) -> int:
             rejected += 1
 
     save_inventory(inv)
+    # Persist state snapshot for GUI
+    write_inventory_snapshot(inv)
+    log_event("scan_complete", {"added": added, "review": review, "rejected": rejected})
 
     print(f"Scan complete.")
     print(f"- auto-added (confirmed): {added}")
@@ -136,6 +142,9 @@ def cmd_inventory_scan(args: argparse.Namespace) -> int:
 
 def cmd_running(args: argparse.Namespace) -> int:
     snap = running_snapshot()
+    # Persist state snapshot for GUI
+    write_runtime_snapshot(snap)
+    
     if not snap:
         print("(no running observations found)")
         return 0
@@ -175,7 +184,63 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_health(args: argparse.Namespace) -> int:
+    """
+    Runs diagnostics and generates a health snapshot.
+    """
+    checks = []
+    
+    # Check config
+    try:
+        cfg = load_config()
+        checks.append({"name": "config", "status": "ok", "message": "Config loaded"})
+    except Exception as e:
+        checks.append({"name": "config", "status": "error", "message": str(e)})
+
+    # Check inventory
+    try:
+        inv = load_inventory()
+        checks.append({"name": "inventory", "status": "ok", "message": f"{len(inv)} entries"})
+    except Exception as e:
+        checks.append({"name": "inventory", "status": "error", "message": str(e)})
+        
+    # Check runtime (docker etc)
+    try:
+        snap = running_snapshot()
+        checks.append({"name": "runtime", "status": "ok", "message": f"{len(snap)} running observations"})
+    except Exception as e:
+        checks.append({"name": "runtime", "status": "warning", "message": f"Runtime check failed: {e}"})
+
+    write_health_snapshot(checks)
+    
+    print("Health Check:")
+    for c in checks:
+        icon = "✅" if c["status"] == "ok" else "❌" if c["status"] == "error" else "⚠️"
+        print(f"{icon} {c['name']:10} : {c['message']}")
+        
+    return 0
+
+
+def cmd_gui(args: argparse.Namespace) -> int:
+    """
+    Launch the local GUI server.
+    """
+    from .gui import start_server
+    try:
+        start_server(port=args.port)
+    except KeyboardInterrupt:
+        print("\nStopping GUI.")
+    except Exception as e:
+        print(f"GUI Error: {e}")
+        return 1
+    return 0
+
+
+
 def main() -> None:
+    # Setup unified logging (verbose=False by default for console, but file logs are DEBUG)
+    setup_logging()
+    
     p = argparse.ArgumentParser(prog="mcpinv", description="Local MCP discovery + curated inventory.")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -209,6 +274,16 @@ def main() -> None:
     pboot = sub.add_parser("bootstrap", help="Bootstrap the Git-Packager workspace (fetch missing components).")
     pboot.set_defaults(func=cmd_bootstrap)
 
+    phealth = sub.add_parser("health", help="Run diagnostics and save health snapshot.")
+    phealth.set_defaults(func=cmd_health)
+
+    pgui = sub.add_parser("gui", help="Launch the local GUI dashboard.")
+    pgui.add_argument("--port", type=int, default=8501, help="Port to listen on (default: 8501)")
+    pgui.set_defaults(func=cmd_gui)
+
     args = p.parse_args()
     rc = args.func(args)
     raise SystemExit(rc)
+
+if __name__ == "__main__":
+    main()

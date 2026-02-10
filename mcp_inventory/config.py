@@ -7,6 +7,9 @@ from typing import List
 APP_DIR = Path.home() / ".mcpinv"
 CONFIG_PATH = APP_DIR / "config.json"
 INVENTORY_PATH = APP_DIR / "inventory.yaml"
+STATE_DIR = APP_DIR / "state"
+LOGS_DIR = APP_DIR / "logs"
+ARTIFACTS_DIR = APP_DIR / "artifacts"
 
 
 @dataclass
