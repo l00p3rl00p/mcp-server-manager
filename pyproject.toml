@@ -1,0 +1,13 @@
+[project]
+name = "mcp-inventory"
+version = "0.1.0"
+description = "Local MCP server discovery + curated inventory (scan wide, accept strict)."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "psutil>=5.9.0",
+  "PyYAML>=6.0.0",
+]
+
+[project.scripts]
+mcpinv = "mcp_inventory.cli:main"

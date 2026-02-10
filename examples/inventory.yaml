@@ -1,0 +1,19 @@
+servers:
+  - id: browser-agent
+    name: browser-agent
+    path: /Users/albert/Code/browser-agent
+    confidence: manual
+    status: unknown
+    transport: http
+    ports: [7450]
+    env_files: [".env"]
+    run:
+      kind: docker-compose
+      compose_file: docker-compose.yml
+      compose_service: mcp
+      workdir: /Users/albert/Code/browser-agent
+    tags: ["local", "docker"]
+    notes: ""
+    added_on: "2026-02-09T00:00:00Z"
+    last_seen: null
+    evidence: []
