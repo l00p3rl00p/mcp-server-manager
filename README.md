@@ -44,8 +44,9 @@ Then open [http://localhost:8501](http://localhost:8501) in your browser.
 6. [Heartbeat & Running Status](#-heartbeat--running-status)
 7. [Standardizing with mcp.server.json](#-standardizing-with-mcpserverjson)
 8. [Git-Packager Workspace](#-git-packager-workspace)
-9. [Contributing](#-contributing)
-10. [License](#-license)
+9. [Standalone vs Integrated: Understanding the Trade-offs](#-standalone-vs-integrated-understanding-the-trade-offs)
+10. [Contributing](#-contributing)
+11. [License](#-license)
 
 ---
 
@@ -160,6 +161,57 @@ Part of the **Git-Packager** suite:
 ### Integrated Usage
 * **mcpinv bootstrap**: Checks for and fetches missing workspace components.
 * **Attach to IDE**: Use the inventory from `mcpinv` to drive `mcp-injector` for one-click IDE setup.
+
+---
+
+## 🎯 Standalone vs Integrated: Understanding the Trade-offs
+
+### Can This Tool Work Standalone?
+
+**Yes**, but with important limitations. Understanding what you gain and lose helps you decide how to use it.
+
+### 📊 Standalone Usage
+
+**What you can do:**
+- ✅ **Discover** existing MCP servers on your system
+- ✅ **Inventory** them in `~/.mcpinv/inventory.yaml`
+- ✅ **Visualize** what servers you have via GUI
+- ✅ **Check status** of running servers (Docker, processes)
+- ✅ **Manually add** servers to inventory
+- ✅ **Audit** your MCP ecosystem
+
+**What you cannot do:**
+- ❌ **Install** new repos as MCP servers (requires `repo-mcp-packager`)
+- ❌ **Auto-configure** IDE configs (requires `mcp-injector`)
+- ❌ **Convert** legacy repos into MCP servers (requires `repo-mcp-packager`)
+- ❌ **One-click setup** from discovery to running (requires full suite)
+
+**Best for:**
+- Users who manually install MCP servers
+- Teams wanting visibility into existing MCP infrastructure
+- Auditing/documentation purposes
+- "Read-only" MCP ecosystem management
+
+### 🚀 Integrated Usage (Full Git-Packager Suite)
+
+**What you gain with `repo-mcp-packager`:**
+- ✅ **Click "Install"** in GUI → repo becomes MCP server automatically
+- ✅ **Environment setup** handled (Python venvs, Node, Docker)
+- ✅ **Legacy script conversion** via MCP bridge generation
+- ✅ **Clean uninstall** that surgically removes installations
+- ✅ **Complete autonomy** from discovery to deployment
+
+**What you gain with `mcp-injector`:**
+- ✅ **Auto-configure IDEs** (Claude, Cursor, etc.) from inventory
+- ✅ **One-click "Attach to All IDEs"** from GUI
+- ✅ **Safe JSON editing** with validation and backups
+- ✅ **No bracket hell** when managing IDE configs
+
+**Best for:**
+- Users who want zero-friction MCP server installation
+- Teams building MCP ecosystems from scratch
+- Anyone who values "drop and run" simplicity
+- Developers who hate manual configuration
 
 ---
 
