@@ -1,51 +1,85 @@
-# Architecture
+# Architecture - Local MCP-Server Discovery + Inventory
 
-## Core idea
+## 📋 Table of Contents
+1. [Core Design Principles](#-core-design-principles)
+2. [Module Overview](#-module-overview)
+3. [The MCP Gate Logic](#-the-mcp-gate-logic)
+4. [GUI & CLI Communication (Contracts)](#-gui--cli-communication-contracts)
+
+---
+
+## 🔍 Core Design Principles
+
 **Scan wide, accept strict.**
 
-- Wide scan finds candidates using cheap trigger files.
-- Gate decides:
-  - Confirmed = auto-add
-  - Review = show candidate (user can add)
-  - Rejected = ignore
+The system is designed to crawl large Directory trees efficiently while maintaining a high bar for what is considered an "MCP Server".
 
-Inventory remains the source of truth.
+* **Wide Scan**: Finds candidates using cheap trigger files (.env, Dockerfile, etc.).
+* **Strict Gate**: Decides if a candidate is Confirmed, Review-worthy, or Rejected.
+* **Inventory Single Source of Truth**: The `inventory.yaml` is the authoritative list.
 
-## Modules
+---
 
-- `scan.py`
-  - Crawls scan roots, excludes noisy dirs, emits `Candidate` objects with evidence + score.
+## 📂 Module Overview
 
-- `gate.py`
-  - Hard acceptance gate:
-    - Strong signals → confirmed
-    - Medium signals → review
-    - Weak/no signals → reject
+* **`scan.py`**: Crawls scan roots, excludes noisy directories, and emits `Candidate` objects with evidence and scoring.
+* **`gate.py`**: Applies the hard acceptance gate based on SDK imports, manifests, and Docker labels.
+* **`inventory.py`**: Manages the lifecycle of `~/.mcpinv/inventory.yaml`.
+* **`runtime.py`**: Observes running signals (Docker ps, OS processes) for heartbeat visibility.
+* **`cli.py`**: The entry point for all operator commands (`scan`, `add`, `list`, `running`, `config`).
 
-- `inventory.py`
-  - Reads/writes `~/.mcpinv/inventory.yaml`.
-  - Manual add/update support.
+---
 
-- `runtime.py`
-  - Running observations for heartbeat:
-    - Docker `ps`
-    - MCP-ish process commandlines
+## ⚙️ The MCP Gate Logic
 
-- `cli.py`
-  - Operator commands:
-    - `scan`, `add`, `list`, `running`, `config`
+### Strong MCP Signals (Auto-Accept)
+Any one of these triggers an automatic addition to the inventory:
+* `mcp.server.json` or `mcp.json` manifest present.
+* `package.json` depends on `@modelcontextprotocol/*`.
+* Source code references `modelcontextprotocol` SDKs.
+* Docker labels like `io.mcp.*` (future).
 
-## Strong MCP signals (auto-accept)
-Any one of:
-- `mcp.server.json` or `mcp.json` present
-- `package.json` depends on `@modelcontextprotocol/*`
-- code references `modelcontextprotocol`
-- docker labels `io.mcp.*` (future extension)
+### Medium Signals (Flag for Review)
+Sent to the GUI "Review" bucket:
+* README explicitly mentions MCP.
+* Docker Compose service name suggests MCP.
+* `.env` contains specific LLM/Agentic keys.
 
-## Medium signals (review)
-- README mentions MCP
-- compose service name suggests MCP
-- `.env` contains LLM-ish keys
+### Weak Signals (Auto-Reject)
+* `.env` file present without any other context.
+* Common infrastructure services (Postgres, Redis, etc.) without MCP markers.
 
-## Weak signals (reject)
-- `.env` alone
+---
+
+## 🔌 GUI & CLI Communication (Contracts)
+
+To ensure the GUI is "thin" and the CLI is the source of truth, communication follows these health "lenses".
+
+### 1. Application Health
+* **GUI Shows**: Current state, last successful run, mode, project, and errors.
+* **CLI Emits**: Status snapshots with severity levels, timestamps, and run identity (version, OS, timezone).
+
+### 2. Command Execution Health
+* **GUI Shows**: Timeline of commands, arguments, outcomes, and stderr summaries.
+* **CLI Emits**: Record entries containing `command_id`, `exit_code`, `error_class`, and `human_hint`.
+
+### 3. I/O & Artifact Observability
+* **GUI Shows**: Inputs/outputs captured as artifacts (files, payload sizes, destinations).
+* **CLI Emits**: Metadata for artifacts including `direction`, `ownership` (command linkage), and `retention_policy`.
+
+### 4. Unified Data Strategy
+All communication happens via a unified "App Data" directory:
+* macOS: `~/Library/Application Support/mcp-manager/`
+* Linux: `~/.local/share/mcp-manager/`
+* Windows: `%AppData%/mcp-manager/`
+
+**Storage Structure**:
+* `/logs/`: Rotating human and machine-readable (JSONL) logs.
+* `/state/`: Status snapshots and session registry.
+* `/artifacts/`: Outputs, exports, and cached previews.
+* `/config/`: Per-user and per-project configuration.
+
+---
+
+## 👤 Maintainers
+Developed by the Git-Packager team.
