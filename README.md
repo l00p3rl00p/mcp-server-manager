@@ -13,17 +13,29 @@ This project implements a **scan-wide / accept-strict** workflow for managing MC
 - Produces a curated, human-editable inventory file: `~/.mcpinv/inventory.yaml`
 - Provides a running snapshot (Docker + MCP-ish processes) for heartbeat visibility.
 
-## Install
+## Installation
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
+```
 
-Configure scan roots
+**Or bootstrap the full Git-Packager workspace:**
+```bash
+python bootstrap.py
+# or after installation:
+mcpinv bootstrap
+```
+
+## Quick Start
+
+Configure scan roots:
+```bash
 mcpinv config --show
 mcpinv config --add-root ~/SomewhereElse
 mcpinv config --deep 1
+```
 
 Run a scan
 mcpinv scan
@@ -229,3 +241,31 @@ This builds trust that the system is being selective, not noisy.
 > **Inventory is curated, not inferred.**
 
 That’s exactly how you avoid tool-sprawl becoming chaos.
+
+---
+
+## 🤝 Better Together: Git-Packager Workspace
+
+This tool is part of the **Git-Packager** workspace:
+
+| Tool | Purpose |
+|------|--------|
+| **mcp-injector** | Safely manage MCP server configs in IDE JSON files |
+| **mcp-server-manager** (this tool) | Discover and track MCP servers across your system |
+| **repo-mcp-packager** | Install and package MCP servers with automation |
+
+### Standalone vs. Integrated
+
+- **Standalone**: Works perfectly on its own for MCP server discovery.
+- **Integrated**: When combined with other components:
+  - One-click IDE attachment via `mcp-injector`
+  - Automated packaging and deployment via `repo-mcp-packager`
+  - Cross-tool validation (e.g., verify a server is running before configuring)
+
+### Bootstrap the Workspace
+
+```bash
+mcpinv bootstrap
+```
+
+This checks for missing Git-Packager components and offers to fetch them from GitHub.

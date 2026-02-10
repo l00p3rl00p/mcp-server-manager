@@ -147,6 +147,34 @@ def cmd_running(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bootstrap(args: argparse.Namespace) -> int:
+    """
+    Bootstrap the Git-Packager workspace by fetching missing components.
+    
+    This command runs the universal bootstrapper to check for and optionally
+    fetch missing workspace components (mcp-injector, repo-mcp-packager).
+    """
+    try:
+        # Import and run the universal bootstrapper
+        import importlib.util
+        
+        bootstrap_path = Path(__file__).parent.parent / "bootstrap.py"
+        if not bootstrap_path.exists():
+            print("❌ bootstrap.py not found. Please download it from:")
+            print("   https://github.com/l00p3rl00p/repo-mcp-packager/blob/main/bootstrap.py")
+            return 1
+        
+        # Load and execute bootstrap module
+        spec = importlib.util.spec_from_file_location("bootstrap", bootstrap_path)
+        bootstrap = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bootstrap)
+        bootstrap.main()
+        return 0
+    except Exception as e:
+        print(f"❌ Bootstrap failed: {e}")
+        return 1
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="mcpinv", description="Local MCP discovery + curated inventory.")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -177,6 +205,9 @@ def main() -> None:
 
     prun = sub.add_parser("running", help="Show running observations (docker + mcp-ish processes).")
     prun.set_defaults(func=cmd_running)
+
+    pboot = sub.add_parser("bootstrap", help="Bootstrap the Git-Packager workspace (fetch missing components).")
+    pboot.set_defaults(func=cmd_bootstrap)
 
     args = p.parse_args()
     rc = args.func(args)
