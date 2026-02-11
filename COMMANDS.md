@@ -1,20 +1,22 @@
 # Workforce Nexus: Exhaustive Command Reference
 
-This document provides a complete list of commands for all modules in the Workforce Nexus suite. Once the suite is installed in **Industrial** or **Standard** mode, use the **Global Command** for convenience from any directory.
+This document provides a complete list of commands for all modules in the Workforce Nexus suite.
+
+Scope note: to avoid documentation drift, this table lists **only commands/flags that are verifiably present in this repo workspace** (i.e., `python3 … --help` shows them). Global wrappers (e.g. `mcp-activator`) may exist after installation, but their exact CLI surface depends on the installed shims.
 
 ---
 
 ## 🚀 The Activator (repo-mcp-packager)
 **Main Responsibility**: Orchestration, Multi-tool Installation, and Workspace Sync.
 
-| Action | Global Command | Direct Module Command |
-| :--- | :--- | :--- |
-| **Full Bootstrap** | `mcp-activator --permanent` | `python3 bootstrap.py --permanent` |
-| **Standard Install** | `mcp-activator --standard` | `python3 bootstrap.py --standard` |
-| **Lite Install** | `mcp-activator --lite` | `python3 bootstrap.py --lite` |
-| **Sync Workspace** | `mcp-activator --sync` | `python3 bootstrap.py --sync` |
-| **Launch Dashboard** | `mcp-activator --gui` | `python3 bootstrap.py --gui` |
-| **Standalone Repo** | N/A | `python3 serverinstaller/install.py` |
+| Action | Direct Command |
+| :--- | :--- |
+| **Industrial Install / Bootstrap** | `python3 bootstrap.py --permanent` *(alias: --industrial)* |
+| **Lite Install / Bootstrap** | `python3 bootstrap.py --lite` |
+| **Sync Workspace (Update)** | `python3 bootstrap.py --sync` *(alias: --update)* |
+| **Launch Dashboard** | `python3 bootstrap.py --gui` |
+| **Standalone Repo Installer** | `python3 serverinstaller/install.py` |
+| **Full Wipe (Start Fresh) (CLI-only)** | `python3 uninstall.py --kill-venv --purge-data` |
 
 ---
 
@@ -34,14 +36,13 @@ This document provides a complete list of commands for all modules in the Workfo
 ## 💉 The Surgeon (mcp-injector)
 **Main Responsibility**: Precise JSON configuration injection for IDEs (Claude, Cursor, etc.).
 
-| Action | Global Command | Direct Module Command |
-| :--- | :--- | :--- |
-| **Inject Server** | `mcp-surgeon add [client] [name] [cmd]` | `python3 mcp_injector.py add ...` |
-| **Remove Server** | `mcp-surgeon remove [client] [name]` | `python3 mcp_injector.py remove ...` |
-| **List Config** | `mcp-surgeon list [client]` | `python3 mcp_injector.py list ...` |
-| **Guided Mode** | `mcp-surgeon interactive` | `python3 mcp_injector.py interactive` |
-| **Startup Detect + Prompt Inject** | `mcp-surgeon --startup-detect` | `python3 mcp_injector.py --startup-detect` |
-| **List Known Clients** | `mcp-surgeon --list-clients` | `python3 mcp_injector.py --list-clients` |
+| Action | Direct Command |
+| :--- | :--- |
+| **Inject Server (interactive)** | `python3 mcp_injector.py --add` *(optionally use --config PATH or --client NAME)* |
+| **Remove Server** | `python3 mcp_injector.py --remove` |
+| **List Config** | `python3 mcp_injector.py --list` |
+| **List Known Clients** | `python3 mcp_injector.py --list-clients` |
+| **Startup Detect + Prompt Inject** | `python3 mcp_injector.py --startup-detect` |
 
 *Supported Clients: `claude`, `cursor`, `vscode`, `xcode`, `codex`, `aistudio`, `google-antigravity` (alias of AI Studio)*
 
@@ -50,13 +51,13 @@ This document provides a complete list of commands for all modules in the Workfo
 ## 📚 The Librarian (mcp-link-library)
 **Main Responsibility**: Knowledge persistence, link storage, and local codebase indexing.
 
-| Action | Global Command | Direct Module Command |
-| :--- | :--- | :--- |
-| **Add URL** | `mcp-librarian --add [url]` | `python3 mcp.py --add [url]` |
-| **Index Workspace** | `mcp-librarian --index [path]` | `python3 mcp.py --index [path]` |
-| **Search Knowledge** | `mcp-librarian --search "query"` | `python3 mcp.py --search "query"` |
-| **Index Sibling Tools**| `mcp-librarian --index-suite` | `python3 mcp.py --index-suite` |
-| **Wipe Index** | N/A | `python3 mcp.py --clear` |
+| Action | Direct Command |
+| :--- | :--- |
+| **Add URL** | `python3 mcp.py --add` |
+| **Index Directory** | `python3 mcp.py --index` |
+| **Search Knowledge** | `python3 mcp.py --search` |
+| **Index Sibling Tools** | `python3 mcp.py --index-suite` |
+| **Run as MCP server (stdio) (CLI-only)** | `python3 mcp.py --server` |
 
 ---
 

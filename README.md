@@ -1,10 +1,20 @@
 # MCP Workforce Nexus: The Activator
 
+Last updated: 2026-02-11
+
 **The primary engine for deploying, hardening, and unifying MCP server environments with industrial-grade reliability.**
 
 The **Activator** orchestrates the Workforce Nexus, transforming raw GitHub repositories into production-ready AI tools. It handles environment isolation, structural auditing, and atomic deployments.
 
 ---
+
+## 🧹 One-Command Full Wipe (Start Fresh)
+
+Run a complete wipe (remove local venv + shared suite data) with:
+
+```bash
+python3 uninstall.py --kill-venv --purge-data
+```
 
 ## ⚡ Quick Start: Standalone Activator
 
