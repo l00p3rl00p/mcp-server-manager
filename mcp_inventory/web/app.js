@@ -386,8 +386,6 @@ async function fetchAll() {
     await Promise.all([
         fetchHealth(),
         fetchInventory(),
-        fetchHealth(),
-        fetchInventory(),
         fetchLogs(),
         fetchSystemStatus()
     ]);

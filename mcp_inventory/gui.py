@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any, Dict
 from urllib.parse import urlparse
 
-from .config import STATE_DIR, APP_DIR, LOGS_DIR
+from .config import STATE_DIR, APP_DIR
+from .logger import ACTIVE_LOGS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(400, "Bad Request")
             return
 
-        file_path = LOGS_DIR / log_name
+        file_path = ACTIVE_LOGS_DIR / log_name
         if not file_path.exists():
             self.send_json_response({"lines": []})
             return
@@ -99,7 +100,7 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
 
     def api_get_logs(self):
         # Read latest lines from the log file
-        log_file = LOGS_DIR / "mcpinv.jsonl"
+        log_file = ACTIVE_LOGS_DIR / "mcpinv.jsonl"
         if not log_file.exists():
              self.send_json_response({"logs": []})
              return
@@ -116,7 +117,7 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
                     parsed_logs.append({"message": line, "level": "RAW"})
             
             # Read Librarian logs
-            lib_log_file = LOGS_DIR / "librarian_errors.log"
+            lib_log_file = ACTIVE_LOGS_DIR / "librarian_errors.log"
             if lib_log_file.exists():
                 lib_lines = lib_log_file.read_text(encoding="utf-8").splitlines()[-50:] # Last 50 errors
                 for line in lib_lines:
@@ -235,9 +236,8 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
             import sys
             import time
             import os
-            from .config import LOGS_DIR
-            
-            action_log_path = LOGS_DIR / f"action_{int(time.time())}.log"
+            action_log_path = ACTIVE_LOGS_DIR / f"action_{int(time.time())}.log"
+            action_log_path.parent.mkdir(parents=True, exist_ok=True)
             
             if command == "attach":
                 # Locate mcp-injector in Nexus
@@ -286,12 +286,14 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
                     
                     cmd = [sys.executable, str(installer), "--update", "--machine", "--headless"]
                 else:
-                    # System Update: Update the Packager itself (and thus the suite)
-                    packager = APP_DIR.parent / "repo-mcp-packager" / "install.py"
-                    if not packager.exists():
-                        self.send_error(404, "Packager not found for system update")
+                    # System Update: Update the suite via the Activator bootstrapper.
+                    # (Avoids relying on a non-existent repo-mcp-packager/install.py.)
+                    nexus_root = APP_DIR.parent
+                    bootstrap = nexus_root / "repo-mcp-packager" / "bootstrap.py"
+                    if not bootstrap.exists():
+                        self.send_error(404, f"Activator bootstrap.py not found at {bootstrap}")
                         return
-                    cmd = [sys.executable, str(packager), "--update", "--machine", "--headless"]
+                    cmd = [sys.executable, str(bootstrap), "--sync"]
 
             else:
                 cmd = [sys.executable, "-m", "mcp_inventory.cli", command]
@@ -322,10 +324,8 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
 def start_server(port: int = 8501):
     # Ensure WEB_DIR exists
     WEB_DIR.mkdir(parents=True, exist_ok=True)
-    
-    # If no index.html, create a placeholder
-    if not (WEB_DIR / "index.html").exists():
-        (WEB_DIR / "index.html").write_text("<h1>MCP Inventory GUI Placeholder</h1>")
+    ACTIVE_LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
 
     handler = MCPInvHandler
     # SECURITY: Bind only to local loopback to prevent external access

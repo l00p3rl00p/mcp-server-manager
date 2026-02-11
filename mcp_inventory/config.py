@@ -68,6 +68,9 @@ class Config:
 
 def ensure_app_dir() -> None:
     APP_DIR.mkdir(parents=True, exist_ok=True)
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def load_config() -> Config:
