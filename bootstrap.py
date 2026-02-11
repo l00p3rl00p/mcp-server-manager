@@ -445,7 +445,7 @@ def main():
     parser = argparse.ArgumentParser(description="Nexus Bootstrap - Tiered Reliability")
     parser.add_argument("--lite", action="store_true", help="Lite mode (Zero-Dep)")
     parser.add_argument("--industrial", "--permanent", action="store_true", dest="industrial", help="Industrial mode (Infrastructure)")
-    parser.add_argument("--sync", action="store_true", help="Sync Workforce Nexus from workspace or GitHub (Update logic)")
+    parser.add_argument("--sync", "--update", action="store_true", dest="sync", help="Sync/Update Workforce Nexus from workspace or GitHub")
     parser.add_argument("--strategy", choices=["full", "step"], help="Installation strategy")
     parser.add_argument("--gui", action="store_true", help="Launch GUI after installation")
     parser.add_argument("--force", action="store_true", help="Force overwrite existing installations")

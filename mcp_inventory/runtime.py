@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 from .models import utc_now_iso
 
@@ -57,6 +60,8 @@ def docker_running() -> List[RunningObservation]:
 def listening_ports_localhost() -> List[RunningObservation]:
     # Best-effort using psutil; will include many non-MCP listeners (we keep it as "running signals").
     obs: List[RunningObservation] = []
+    if psutil is None:
+        return obs
     try:
         conns = psutil.net_connections(kind="inet")
     except Exception:
@@ -83,6 +88,8 @@ def listening_ports_localhost() -> List[RunningObservation]:
 
 def mcpish_processes() -> List[RunningObservation]:
     obs: List[RunningObservation] = []
+    if psutil is None:
+        return obs
     needles = ("modelcontextprotocol", "@modelcontextprotocol", " mcp", "MCP_")
     for p in psutil.process_iter(attrs=["pid", "name", "cmdline", "cwd"]):
         try:

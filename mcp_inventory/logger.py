@@ -9,8 +9,26 @@ from typing import Any, Dict, Optional
 
 from .config import LOGS_DIR
 
-# Ensure logs directory exists
-LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+def _resolve_logs_dir() -> Path:
+    """
+    Resolve a writable logs directory.
+    Falls back to ~/.mcpinv/logs if ~/.mcp-tools/... is not writable.
+    """
+    primary = LOGS_DIR
+    try:
+        primary.mkdir(parents=True, exist_ok=True)
+        probe = primary / ".write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        return primary
+    except Exception:
+        fallback = Path.home() / ".mcpinv" / "logs"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+ACTIVE_LOGS_DIR = _resolve_logs_dir()
 
 # Logger names
 LOGGER_NAME = "mcpinv"
@@ -54,7 +72,7 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
     logger.addHandler(console_handler)
 
     # 2. File Handler (Machine - JSONL)
-    log_file = LOGS_DIR / "mcpinv.jsonl"
+    log_file = ACTIVE_LOGS_DIR / "mcpinv.jsonl"
     file_handler = RotatingFileHandler(
         log_file,
         maxBytes=5 * 1024 * 1024, # 5MB

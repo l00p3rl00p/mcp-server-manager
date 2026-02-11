@@ -7,9 +7,34 @@ import sys
 import os
 
 if sys.platform == "win32":
-    APP_DIR = Path(os.environ['USERPROFILE']) / ".mcp-tools" / "mcp-server-manager"
+    _PRIMARY_APP_DIR = Path(os.environ['USERPROFILE']) / ".mcp-tools" / "mcp-server-manager"
 else:
-    APP_DIR = Path.home() / ".mcp-tools" / "mcp-server-manager"
+    _PRIMARY_APP_DIR = Path.home() / ".mcp-tools" / "mcp-server-manager"
+
+
+def _resolve_app_dir() -> Path:
+    """
+    Resolve a writable app directory.
+    Falls back to ~/.mcpinv/mcp-server-manager when ~/.mcp-tools is not writable.
+    """
+    candidates = [
+        _PRIMARY_APP_DIR,
+        Path.home() / ".mcpinv" / "mcp-server-manager",
+        Path.cwd() / ".mcpinv" / "mcp-server-manager",
+    ]
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / ".write_test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            return candidate
+        except Exception:
+            continue
+    raise PermissionError("No writable app directory for mcp-server-manager")
+
+
+APP_DIR = _resolve_app_dir()
 CONFIG_PATH = APP_DIR / "config.json"
 INVENTORY_PATH = APP_DIR / "inventory.yaml"
 STATE_DIR = APP_DIR / "state"
