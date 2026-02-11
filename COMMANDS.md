@@ -16,7 +16,7 @@ Scope note: to avoid documentation drift, this table lists **only commands/flags
 | **Sync Workspace (Update)** | `python3 bootstrap.py --sync` *(alias: --update)* |
 | **Launch Dashboard** | `python3 bootstrap.py --gui` |
 | **Standalone Repo Installer** | `python3 serverinstaller/install.py` |
-| **Full Wipe (Start Fresh) (CLI-only)** | `python3 uninstall.py --kill-venv --purge-data` |
+| **Full Wipe (Start Fresh) (CLI-only)** | `python3 uninstall.py --kill-venv --purge-data` *(add --verbose / --devlog for diagnostics; --yes for automation)* |
 
 ---
 

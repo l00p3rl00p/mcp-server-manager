@@ -16,6 +16,8 @@ Run a complete wipe (remove local venv + shared suite data) with:
 python3 uninstall.py --kill-venv --purge-data
 ```
 
+Safety: this uninstaller only touches approved central locations (e.g. `~/.mcp-tools`, `~/.mcpinv`, and the Nexus PATH block). It does **not** scan your disk or delete anything in your git workspace.
+
 ## ⚡ Quick Start: Standalone Activator
 
 Install a single repository as a portable MCP server immediately:
