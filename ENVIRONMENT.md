@@ -1,64 +1,94 @@
-# Environment - Local MCP-Server Discovery + Inventory
+# Environment Specification - Git Repo MCP Converter & Installer
 
-Technical requirements and configuration details for the `mcpinv` tool.
+**Unified Environment Requirements & Audit Logic.**
 
----
-
-## 📋 Table of Contents
-1. [Core Requirements](#-core-requirements)
-2. [FileSystem Impact](#-filesystem-impact)
-3. [Configuration Defaults](#-configuration-defaults)
-4. [Accuracy Conventions](#-accuracy-conventions)
+This document provides a low-density technical manual for the host environment requirements, dependency resolution logic, and OS-specific configurations used by the Workforce Nexus Activator.
 
 ---
 
-## 🔍 Core Requirements
+## 🔍 Core Dependency Rules
 
-* **Python**: 3.10+ required for core logic and async operations.
-* **Docker CLI**: Optional, but required for detecting heartbeat signals from containers.
-* **Operating System**: macOS and Linux are primary targets. Windows is supported but may show variations in process and port discovery logic.
+### 1. Python Runtimes
+*   **The Orchestrator (`install.py`)**: Requires **Python 3.9+**.
+*   **The Application Engine**: The core workforce tools are optimized for **Python 3.11+**.
+*   **Isolation Policy**: The installer will always prioritize the creation of a local `.venv` within the project root to prevent global package conflicts.
 
----
+### 2. Node.js & NPM
+*   **Requirement**: Node.js v18+ and NPM v9+ are required only if the `gui/` directory is present.
+*   **Isolation Policy**: Use `--npm-policy local` to ensure binaries are installed in a project-private context.
 
-## 📂 FileSystem Impact
-### Nexus Convergence
-When running as part of the **Workforce Nexus**, the Observer uses the shared root:
-* **Nexus Root**: `~/.mcp-tools/`
-* **Inventory**: `~/.mcp-tools/mcp-server-manager/inventory.yaml`
-
-### Standalone Mode (Legacy)
-`mcpinv` stores data in:
-* **Config**: `~/.mcpinv/config.json`
-* **Inventory**: `~/.mcpinv/inventory.yaml`
+### 3. Docker Ecosystem
+*   **Requirement**: A running Docker Desktop or Engine daemon is required for sandbox operations.
+*   **Validation**: The installer executes `docker info` to verify daemon status. If inaccessible, the `--docker-policy` determines whether to skip or fail.
 
 ---
 
-## ⚙️ Configuration Defaults
+## 🛠 OS-Specific Path Matrix
 
-### Scan Roots
-By default, the tool looks in common development locations:
-* `~/Code`
-* `~/Projects`
-* `~/Dev`
-* `~/Documents`
+The Workforce Nexus centralizes all artifacts in a predictable location based on the host OS.
 
-### Exclusions
-To maintain performance and reduce noise, these directories are always skipped:
-* `.git`, `node_modules`, `.venv`
-* Cache directories and build outputs
+| Platform | Nexus Home Root | Config Path |
+| :--- | :--- | :--- |
+| **macOS** | `~/.mcp-tools` | `~/Library/Application Support/Cloud/claude_desktop_config.json` |
+| **Linux** | `~/.mcp-tools` | `~/.config/Claude/claude_desktop_config.json` |
+| **Windows** | `%USERPROFILE%\.mcp-tools` | `%APPDATA%\Claude\claude_desktop_config.json` |
 
 ---
 
-## 🌟 Accuracy Conventions
+## 🛠 Environment Audit Logic: The Pre-flight Probe
 
-You can improve detection accuracy by adding these markers to your projects:
+The `audit.py` module performs a multi-stage probe to build a system capabilities map.
 
-### 1. Manifest File
-Place an `mcp.server.json` file in your project root. This acts as a **Strong Signal** that triggers automatic inventory addition.
+### Stage 1: Shell Detection
+The probe identifies the active shell via the `SHELL` environment variable.
+*   **Targets**: `.zshrc` (macOS default), `.bashrc`, `.bash_profile`.
+*   **Action**: Captures the path to the primary RC file for future PATH modifications.
 
-### 2. .env Marker
-Add an explicit name to your `.env` file:
+### Stage 2: Binary Path Discovery
+Uses `shutil.which` to find system binaries for:
+*   `python3`
+*   `npm`
+*   `node`
+*   `docker`
+*   `git`
+
+### Stage 3: Feature Inventory
+Scans the current project root for identifying markers:
+1.  **`pyproject.toml`**: Triggers full Python packaging logic.
+2.  **`requirements.txt`**: Triggers legacy pip dependency installation.
+3.  **`package.json`**: Triggers NPM installation.
+4.  **`Dockerfile`**: Enables containerization features.
+
+---
+
+## ⚙️ Configuration Policies
+
+### PATH Management (Surgical Injection)
+The installer adds the project's bin directory to the host PATH using unique markers to ensure zero-risk uninstallation.
+
+**Example Injection Block:**
 ```bash
-MCP_SERVER_NAME=your-server-name
+# Shesha Block START
+export PATH="/Users/user/project/.venv/bin:$PATH"
+# Shesha Block END
 ```
-This upgrades a `.env` file from a **Weak Signal** (auto-reject) to a **Strong Signal** (confirmed).
+*The uninstall script specifically targets everything between these markers.*
+
+### Permissions Hardening (Phase 9)
+The environment must support `chmod` (POSIX) or equivalent ACL modifications.
+*   **Logic**: During the installation phase, the `ensure_executable` method iterates through all entry points and shell scripts, setting the `0o111` (execute) bits.
+*   **Enforcement**: This applies to all internal Nexus tools and discovered user repository scripts.
+
+---
+
+## 🛡 Network & Proxy Requirements
+*   **Discovery**: Requires outbound access to `github.com` for bootstrapping sibling repos.
+*   **Installation**: Requires access to `pypi.org` and `registry.npmjs.org`.
+*   **Air-gap Mode**: If dependencies are pre-cached, the `--lite` mode can be used without active network connections.
+
+---
+
+## 📝 Metadata
+*   **Status**: Production / Hardened (Phase 9)
+*   **Developer**: l00p3rl00p
+*   **Reference**: [ARCHITECTURE.md](./ARCHITECTURE.md) | [USER_OUTCOMES.md](./USER_OUTCOMES.md)

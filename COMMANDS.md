@@ -9,7 +9,7 @@ This document provides a complete list of commands for all modules in the Workfo
 
 | Action | Global Command | Direct Module Command |
 | :--- | :--- | :--- |
-| **Full Bootstrap** | `mcp-activator --industrial` | `python3 bootstrap.py --industrial` |
+| **Full Bootstrap** | `mcp-activator --permanent` | `python3 bootstrap.py --permanent` |
 | **Standard Install** | `mcp-activator --standard` | `python3 bootstrap.py --standard` |
 | **Lite Install** | `mcp-activator --lite` | `python3 bootstrap.py --lite` |
 | **Sync Workspace** | `mcp-activator --sync` | `python3 bootstrap.py --sync` |
@@ -61,7 +61,7 @@ This document provides a complete list of commands for all modules in the Workfo
 ## 🌍 Directory Context Rules
 
 ### 1. Where to run what?
-*   **Autonomous Bootstrap**: Run `python3 bootstrap.py --industrial` from a standalone copy of the bootstrapper. It will automatically fetch the rest of the Workforce Nexus suite from GitHub if sibling repositories are not found.
+*   **Autonomous Bootstrap**: Run `python3 bootstrap.py --permanent` from a standalone copy of the bootstrapper. It will automatically fetch the rest of the Workforce Nexus suite from GitHub if sibling repositories are not found.
 *   **Installation/Dev Mode**: Run from the root of a full workspace.
 *   **Daily Global Use**: Once installed, run `mcp-surgeon`, `mcp-observer`, etc., from **any directory** in your terminal.
 *   **Standalone Installer**: Run `python3 serverinstaller/install.py` from the root of the repository you wish to package.

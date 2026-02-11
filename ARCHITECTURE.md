@@ -1,87 +1,122 @@
-# Architecture - Local MCP-Server Discovery + Inventory
+# Architecture - Git Repo MCP Converter & Installer
 
-## 📋 Table of Contents
-1. [Core Design Principles](#-core-design-principles)
-2. [Module Overview](#-module-overview)
-3. [The MCP Gate Logic](#-the-mcp-gate-logic)
-4. [GUI & CLI Communication (Contracts)](#-gui--cli-communication-contracts)
+**The technical blueprint for the Workforce Nexus Activator.**
+
+This document provides a low-density, comprehensive deep dive into the internal logic, state machines, and modular subsystems that power the `repo-mcp-packager`. It is intended for developers and architects who need to understand exactly how the system achieves industrial-grade reliability.
 
 ---
 
-## 🔍 Nexus Application Context
-The **Observer** is a core component of the **Workforce Nexus**. It provides the observability layer for the converged suite. For the full architectural roadmap, see the [Master Nexus Guide](../repo-mcp-packager/NEXUS_GUIDE.md).
+## 🔍 Core Philosophy: The Clean Room Installer
 
-## 🏗️ Core Design Principles
-**Scan wide, accept strict.**
+The Activator follows the **Clean Room** principle. It treats every repository as a potentially hostile or cluttered environment and ensures that:
 
-The system is designed to crawl large Directory trees efficiently while maintaining a high bar for what is considered an "MCP Server".
-
-* **Wide Scan**: Finds candidates using cheap trigger files (.env, Dockerfile, etc.).
-* **Strict Gate**: Decides if a candidate is Confirmed, Review-worthy, or Rejected.
-* **Inventory Single Source of Truth**: The `inventory.yaml` is the authoritative list.
+1.  **Zero-Dep Bootstrap**: The core installer requires only the Python Standard Library.
+2.  **Volatile Isolation**: Dependencies are kept in local `.venv` or `node_modules` folders, never installed globally.
+3.  **Surgical Traceability**: Every bit flipped or file created is recorded in a manifest for atomic reversal.
 
 ---
 
-## 📂 Module Overview
+## 🏗 Subsystem Breakdown
 
-* **`scan.py`**: Crawls scan roots, excludes noisy directories, and emits `Candidate` objects with evidence and scoring.
-* **`gate.py`**: Applies the hard acceptance gate based on SDK imports, manifests, and Docker labels.
-* **`inventory.py`**: Manages the lifecycle of `~/.mcpinv/inventory.yaml`.
-* **`runtime.py`**: Observes running signals (Docker ps, OS processes) for heartbeat visibility.
-* **`cli.py`**: The entry point for all operator commands (`scan`, `add`, `list`, `running`, `config`).
+### 1. The Probe Layer (`audit.py`)
+The Probe layer is the system's "Sensory Organ." It performs non-destructive environment discovery.
 
----
+*   **Capabilities**: Detects Shell type (bash/zsh), Python paths, Node/NPM availability, Docker daemon status, and PATH hygiene.
+*   **Safety**: Uses restricted subprocess calls to prevent side effects during auditing.
+*   **Output**: Generates an `EnvironmentAudit` object used to gate installation strategies.
 
-## ⚙️ The MCP Gate Logic
+### 2. The Execution Engine (`install.py`)
+The "Workhorse" of the suite. It orchestrates the transition from raw code to a managed service.
 
-### Strong MCP Signals (Auto-Accept)
-Any one of these triggers an automatic addition to the inventory:
-* `mcp.server.json` or `mcp.json` manifest present.
-* `package.json` depends on `@modelcontextprotocol/*`.
-* Source code references `modelcontextprotocol` SDKs.
-* Docker labels like `io.mcp.*` (future).
+*   **Structural Audit**: Scans the project root for markers (`pyproject.toml`, `package.json`, `requirements.txt`).
+*   **Strategy Resolution**: Determines if the project should be a Managed Venv, a Lite Wrapper, or a Docker service.
+*   **Dependency Management**: Handles `pip install` and `npm install` with configurable timeouts and atomic failure handling.
 
-### Medium Signals (Flag for Review)
-Sent to the GUI "Review" bucket:
-* README explicitly mentions MCP.
-* Docker Compose service name suggests MCP.
-* `.env` contains specific LLM/Agentic keys.
+### 3. The Sync & Injection Layer (`mcp_injector.py`)
+The "Surgeon" that bridges the gap between the installer and the user's IDE.
 
-### Weak Signals (Auto-Reject)
-* `.env` file present without any other context.
-* Common infrastructure services (Postgres, Redis, etc.) without MCP markers.
+*   **Bracket Hell Prevention**: Specialized JSON parser that handles comma placement and list management for IDE config files.
+*   **Atomic Transactions**: Always creates a `.backup` before writing. Uses temporary files and `os.replace` to prevent corruption.
 
----
+### 4. The Bridge Generator (`bridge.py`)
+Converts legacy scripts into AI-accessible MCP tools.
 
-## 🔌 GUI & CLI Communication (Contracts)
-
-To ensure the GUI is "thin" and the CLI is the source of truth, communication follows these health "lenses".
-
-### 1. Application Health
-* **GUI Shows**: Current state, last successful run, mode, project, and errors.
-* **CLI Emits**: Status snapshots with severity levels, timestamps, and run identity (version, OS, timezone).
-
-### 2. Command Execution Health
-* **GUI Shows**: Timeline of commands, arguments, outcomes, and stderr summaries.
-* **CLI Emits**: Record entries containing `command_id`, `exit_code`, `error_class`, and `human_hint`.
-
-### 3. I/O & Artifact Observability
-* **GUI Shows**: Inputs/outputs captured as artifacts (files, payload sizes, destinations).
-* **CLI Emits**: Metadata for artifacts including `direction`, `ownership` (command linkage), and `retention_policy`.
-
-### 4. Unified Data Strategy
-All communication happens via a unified "App Data" directory:
-* macOS: `~/Library/Application Support/mcp-manager/`
-* Linux: `~/.local/share/mcp-manager/`
-* Windows: `%AppData%/mcp-manager/`
-
-**Storage Structure**:
-* `/logs/`: Rotating human and machine-readable (JSONL) logs.
-* `/state/`: Status snapshots and session registry.
-* `/artifacts/`: Outputs, exports, and cached previews.
-* `/config/`: Per-user and per-project configuration.
+*   **Pattern Matching**: Scans for `if __name__ == "__main__":` and typical function signatures.
+*   **Wrapper Logic**: Generates a FastAPI-based (standard) or stdio-based (lite) MCP server that imports and executes the original functions.
 
 ---
 
-## 👤 Maintainers
-Developed by the Git-Packager team.
+## 🔐 Universal Safety Protocol (USP)
+
+The USP is active across all Reliability Tiers (Lite, Standard, Permanent).
+
+### Phase 1: Pre-flight
+Before a single byte is written:
+1.  **Write Test**: Verifies write permissions in the installation root.
+2.  **Storage Audit**: Verifies there is at least 100MB of free space (enough for a standard venv).
+3.  **Conflict Check**: Detects if an existing installation (manifest) exists and requires cleanup.
+
+### Phase 2: Atomic Tracking
+Every action taken is registered in a global `INSTALLED_ARTIFACTS` list.
+
+### Phase 3: Commit or Rollback
+*   **On Success**: A `manifest.json` is locked to disk.
+*   **On Failure**: The `rollback()` method executes, iterating backward through the artifact list and surgically removing every folder and file created during the session.
+
+---
+
+## 📂 Data Structures & Manifests
+
+### manifest.json Example
+Located in `<project_root>/.librarian/manifest.json`.
+
+```json
+{
+  "install_date": "2026-02-10 14:30:00",
+  "install_artifacts": [
+    "/Users/user/.mcp-tools/mcp-link-library",
+    "/Users/user/Dev/project/.venv"
+  ],
+  "install_mode": "permanent",
+  "remote_url": "https://github.com/...",
+  "version": "0.5.0-hardened"
+}
+```
+
+---
+
+## ⚡ Phase 9: Permissions & Resolution
+
+### Intelligent Entry-Point Resolution
+When multiple candidates exist (e.g., `run.py` and `run.sh`), the system applies the following recommendation logic:
+
+1.  **Preference**: `.sh` is always recommended over `.py` as it typically handles its own environment activation.
+2.  **User Choice**: If ambiguous, the user is prompted to select the primary entry point via a numbered menu.
+3.  **Hardening**: The selected file is run through `chmod +x` immediately.
+
+### Auto-Chmod Logic
+```python
+def ensure_executable(path: Path):
+    if not path.exists() or not path.is_file(): return
+    # Apply execute bit (0o111) while preserving other bits
+    path.chmod(path.stat().st_mode | 0o111)
+```
+
+---
+
+## 🌐 Mutual Discovery (The Bootstrap Loop)
+
+Each tool in the Nexus implements `bootstrap.py` with a recursive discovery loop:
+
+1.  **Level 0**: Is the sibling repo already in the parent folder?
+2.  **Level 1**: Is the tool already installed in `~/.mcp-tools`?
+3.  **Level 2**: Fetch from GitHub.
+
+This ensures that clicking "Install" on any one tool can safely and reliably bring the entire Workforce Nexus to life.
+
+---
+
+## 📝 Metadata
+*   **Status**: Production / Hardened (Phase 9)
+*   **Developer**: l00p3rl00p
+*   **Reference**: [USER_OUTCOMES.md](./USER_OUTCOMES.md) | [ENVIRONMENT.md](./ENVIRONMENT.md)

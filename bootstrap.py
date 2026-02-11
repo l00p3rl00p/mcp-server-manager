@@ -445,7 +445,7 @@ def main():
     parser = argparse.ArgumentParser(description="Nexus Bootstrap - Tiered Reliability")
     parser.add_argument("--lite", action="store_true", help="Lite mode (Zero-Dep)")
     parser.add_argument("--industrial", "--permanent", action="store_true", dest="industrial", help="Industrial mode (Infrastructure)")
-    parser.add_argument("--sync", action="store_true", help="Sync Industrial Nexus from workspace (Update logic)")
+    parser.add_argument("--sync", action="store_true", help="Sync Workforce Nexus from workspace or GitHub (Update logic)")
     parser.add_argument("--strategy", choices=["full", "step"], help="Installation strategy")
     parser.add_argument("--gui", action="store_true", help="Launch GUI after installation")
     parser.add_argument("--force", action="store_true", help="Force overwrite existing installations")
@@ -486,7 +486,7 @@ def main():
         print("[*] No local Nexus workspace found. Entering Autonomous Mode...")
         if not args.industrial and not args.lite and not args.strategy:
              print("⚠️  No deployment tier selected. To install the Workforce Nexus suite from GitHub, use:")
-             print("   python bootstrap.py --industrial")
+             print("   python bootstrap.py --permanent")
              sys.exit(1)
     elif has_project_files and target_project.name not in ['mcp-injector', 'mcp-server-manager', 'mcp-link-library', 'repo-mcp-packager']:
         # Case C: Developer Workspace + Standalone Target

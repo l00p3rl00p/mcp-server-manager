@@ -26,7 +26,7 @@ To set up the full suite with global commands and a managed environment:
     ```
 2.  **Run the Bootstrap**:
     ```bash
-    python3 bootstrap.py --industrial
+    python3 bootstrap.py --permanent
     ```
 3.  **Refresh your Shell**:
     ```bash

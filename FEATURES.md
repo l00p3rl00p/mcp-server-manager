@@ -1,88 +1,88 @@
-# Features & Capabilities: The Observer (mcp-server-manager)
+# Features & Capabilities: The Activator (repo-mcp-packager)
 
-**Unified Intelligence & Control for the Workforce Nexus.**
+**Universal Deployment & Environment Isolation for the Workforce Nexus.**
 
-The Observer provides real-time visibility into the health and logs of your MCP ecosystem. This document provides a high-density reference for its discovery engine, monitoring protocols, and integrated maintenance actions.
+The Activator is the primary engine for transforming repositories into production-ready AI tools while maintaining a "Clean Room" policy. This document provides a high-density reference for installation strategies, isolation logic, and the Phase 9 hardening suite.
 
 ---
 
-## 📊 Feature Matrix
+## 📊 Installation Strategy Matrix
 
-| Feature | Description | Lite Mode | Permanent Mode |
-| :--- | :--- | :---: | :---: |
-| **Auto-Discovery** | Scans filesystem for MCP servers | Glob-based | `pathspec` (Tiered) |
-| **Health Monitoring** | Real-time process & Docker status | Basic (On-demand) | Continuous (Sync) |
-| **Log Ingestion** | Unified log streaming console | Standard Output | Persistent Logs |
-| **Maintenance GUI** | Interactive browser control panel | ✅ | ✅ |
-| **Auto-Chmod** | (In Actions) Standardizes permissions | ✅ | ✅ |
+| Strategy | Mode | Reliability | Environment | Use Case |
+| :--- | :--- | :---: | :--- | :--- |
+| **Full Install** | Interactive | **High** | Managed `.venv` | Complex Python/Node projects |
+| **Lightweight** | `--lite` | **Basic** | Shell Shim (`.sh`) | Single-file scripts / Portability |
+| **Permanent** | `--permanent`| **Industrial** | Nexus Infra | Mission-critical deployments |
+| **Headless** | `--headless` | **Automated**| Non-interactive | CI/CD / AI Agent replication |
 
 ---
 
 ## 📋 Table of Contents
-1. [Discovery Architecture](#discovery-architecture)
+1. [Clean Room Architecture](#clean-room-architecture)
 2. [Command Matrix](#command-matrix)
-3. [GUI Maintenance Actions](#gui-maintenance-actions)
-4. [Health Check Indicators](#health-check-indicators)w
+3. [Intelligent Resolution & Hardening](#intelligent-resolution--hardening)
+4. [Surgical Reversal (Uninstall)](#surgical-reversal-uninstall)
 
 ---
 
-## 🔍 Discovery Architecture
+## 🔍 Clean Room Architecture
 
-The Observer classifies potential servers into a tiered priority queue.
+The Activator ensures that no tool pollutes the global host system by strictly gating environment variables and binaries.
 
 ```mermaid
 graph TD
-    S[System Scan] --> P1{Strong Signal?}
-    P1 -- package.json / pyproject.toml --> I[(Inventory)]
-    P1 -- docker-compose.yml --> I
-    P1 -- No --> P2{Legacy Candidate?}
-    P2 -- script.py / main.js --> Q[Review Queue]
-    Q -- User Approved --> I
-    I --> M[Continuous Monitoring]
+    Repo[Git Repo] --> Detect[Structural Audit]
+    Detect --> Choice{Strategy Select}
+    Choice -- Managed --> Venv[Isolated .venv]
+    Choice -- Wrapper --> Shim[install.sh Wrapper]
+    Venv --> Map[Path Marker Injection]
+    Shim --> Map
+    Map --> Manifest[.librarian/manifest.json]
 ```
 
 ---
 
 ## 💻 Command Matrix (Lookup)
 
-| Mode | Command | Action | Key Flag |
+| Operation | Command | Primary Flag | Context |
 | :--- | :--- | :--- | :--- |
-| **Dashboard** | `python mcp_server_manager.py --gui` | Launch web interface | `--port 5001` |
-| **Scan** | `python -m mcp_inventory.cli scan` | Deep filesystem sweep | `--path ~/Dev` |
-| **Inventory**| `python mcp_server_manager.py --inventory`| JSON/YAML inventory list | `--format json` |
-| **Health** | `python mcp_server_manager.py --check` | Run system-wide diagnostics| `--verbose` |
-| **Logs** | `python mcp_server_manager.py --logs` | Tail server logs | `--name shesha` |
+| **Install** | `python install.py` | (None) | Standard interactive deployment |
+| **Update** | `python install.py` | `--update` | Pull code + re-harden permissions |
+| **Bridge** | `python install.py` | `--generate-bridge` | Wrap legacy code for AI use |
+| **Library** | `python install.py` | `--with-library` | Deploy Librarian alongside repo |
+| **Rollback** | (Automatic) | (None) | Triggered on installation failure |
 
 ---
 
-## 🛠 GUI Maintenance Actions
+## 🔐 Intelligent Resolution & Hardening (Phase 9)
 
-The Observer GUI is the central cockpit for Nexus maintenance:
+The Activator features a multi-layer safety suite to ensure executables "Just Work" on the first try:
 
-*   **Open Terminal**: Spawns a new terminal session in the target server's home directory.
-*   **Update Tool**: Triggers the Activator to pull latest code and reinstall dependencies.
-*   **Permissions Hardening**: Automatically runs `chmod +x` on all entry points during an update.
-*   **Restart Server**: Safely kills active server processes and restarts the bridge.
+1.  **Entry Point Resolution**: If a folder contains both `.py` and `.sh` entry points, the Activator prompts the user (or recommends the portable `.sh` option).
+2.  **Auto-Chmod Enforcement**: Automatically sets the execute bit (`chmod +x`) on:
+    *   Internal Nexus tools (`mcp.py`, `bootstrap.py`, etc.).
+    *   Discovered user scripts in target repositories.
+    *   Generated `install.sh` wrappers.
+3.  **Permissions Audit**: During updates, the Activator re-verifies that all mapped executables are still granted appropriate permissions.
 
 ---
 
-## 📊 Health Check Indicators (TTY)
+## 🗑️ Surgical Reversal (Uninstall)
 
-| Metric | Pass | Warn | Fail |
-| :--- | :---: | :---: | :---: |
-| **Nexus DB** | Integrity OK | Vacuum Required | **Missing / Locked** |
-| **Docker** | Daemon Online | No containers | **Daemon Offline** |
-| **Permissions** | Write Access ✅ | Read-only | **Access Denied** |
+The `uninstall.py` tool uses the **Nexus Manifest Layer** to ensure zero-residue cleanup:
+*   **Artifact Removal**: Only files listed in `manifest.json` are deleted.
+*   **PATH Cleaning**: Uses `# Shesha Block` markers to surgically extract shell configuration edits.
+*   **Nexus Protection**: Refuses to delete the `~/.mcp-tools` home unless it is completely empty or the `--force` flag is used.
 
 ---
 
 > **Author**: l00p3rl00p / Workforce Nexus
-> **Reference**: [NEXUS_TECHNICAL_SPEC.md](../repo-mcp-packager/NEXUS_TECHNICAL_SPEC.md)
+> **Reference**: [NEXUS_TECHNICAL_SPEC.md](./NEXUS_TECHNICAL_SPEC.md)
 
 
 
 ## 🏢 The Nexus Convergence Model
-The Observer supports three tiers of organizational binding:
+The Activator supports three tiers of organizational binding:
 
 | Feature | Lite (Loose Binding) | Standard (Close Binding) | Industrial (Managed App) |
 | :--- | :--- | :--- | :--- |
@@ -94,11 +94,9 @@ The Observer supports three tiers of organizational binding:
 
 ## 📚 Master Documentation
 For the complete suite experience and detailed procedures, see:
-👉 **[NEXUS_GUIDE.md](../repo-mcp-packager/NEXUS_GUIDE.md)**
+👉 **[NEXUS_GUIDE.md](./NEXUS_GUIDE.md)**
 
 ---
 
 > **Author**: l00p3rl00p / Workforce Nexus
 > **Reference**: [ARCHITECTURE.md](./ARCHITECTURE.md) | [ENVIRONMENT.md](./ENVIRONMENT.md)
-
-

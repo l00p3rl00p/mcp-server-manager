@@ -1,85 +1,148 @@
-# MCP Workforce Nexus: The Observer (mcp-server-manager)
+# MCP Workforce Nexus: The Activator
 
-**Intelligent server discovery, inventory management, and runtime observability for the MCP ecosystem.**
+**The primary engine for deploying, hardening, and unifying MCP server environments with industrial-grade reliability.**
 
-The **Observer** scans your local workspace to identify MCP-capable repositories, applies a rigorous multi-signal acceptance gate, and maintains a centralized inventory of verified tools. It provides both a powerful CLI and a lightweight GUI for real-time monitoring.
+The **Activator** orchestrates the Workforce Nexus, transforming raw GitHub repositories into production-ready AI tools. It handles environment isolation, structural auditing, and atomic deployments.
 
 ---
 
-## ⚡ Quick Start: Standalone Observer
+## ⚡ Quick Start: Standalone Activator
 
-Discover and list MCP servers in your current directory immediately:
+Install a single repository as a portable MCP server immediately:
 
 ```bash
-python3 -m mcp_inventory scan .
-python3 -m mcp_inventory list
+python3 serverinstaller/install.py
 ```
-*Selection tip: Use `scan` to find new candidates and `running` to check active heartbeats.*
+*Selection tip: Follow the prompts to detect Python/Node and generate an `install.sh` shim.*
 
 ---
 
 ## 🚀 Package Start: The Workforce Nexus
 
-The Observer acts as the brain of the Workforce Nexus, monitoring servers injected by the Surgeon and discovered by the Librarian.
+Deploy the entire hardened Nexus suite to `~/.mcp-tools` in one command:
 
 ```bash
-# Launch the Nexus Management GUI
-./start_gui.sh
-# OR
-python3 -m mcp_inventory.cli gui
-# Check Synergy Status:
-python3 -m mcp_inventory check-synergy
+python3 bootstrap.py --gui
 ```
+*Selection tip: Use `--gui` to auto-launch the dashboard after installation.*
 
 ---
 
 ## 📋 Table of Contents
-1. [Observability Flow](#observability-flow)
-2. [Reliability Gate Matrix](#reliability-gate-matrix)
+1. [Nexus Architecture](#nexus-architecture)
+2. [Reliability Tier Comparison](#reliability-tier-comparison)
 3. [Core Capabilities](#core-capabilities)
-4. [GUI & Runtime Lenses](#gui--runtime-lenses)
+4. [Universal Safety & Rollback](#universal-safety--rollback)
 5. [Documentation (Low Density)](#documentation-low-density)
 
 ---
 
-## 🔍 Observability Flow
+## 🔍 Nexus Architecture
 
-The Observer follows a high-density logic path from raw file discovery to validated runtime status.
+The Activator unifies all specialized tools into a single, hardened location.
 
 ```mermaid
-graph TD
-    S[Scan Roots] --> C[Candidates]
-    C --> G{The Gate}
-    G -- Strong --> I[Inventory]
-    G -- Medium --> R[GUI Review]
-    G -- Weak --> X[Reject]
-    I --> O[Runtime Observer]
+graph LR
+    A["The Activator<br>(bootstrap.py)"] --> N["~/.mcp-tools/<br>(The Nexus)"]
+    N --> S["Surgeon<br>(mcp-injector)"]
+    N --> O["Observer<br>(mcp-server-manager)"]
+    N --> L["Librarian<br>(mcp-link-library)"]
 ```
 
 ---
 
-## 📊 Reliability Gate Matrix
+## 📊 Reliability Tier Comparison
 
-The Observer identifies tools based on structural and contextual evidence.
+All tiers include **Universal Safety (Pre-flight & Rollback)**.
 
-| Signal Level | Markers | Action | Integration |
-| :--- | :--- | :---: | :--- |
-| **Strong** | `mcp.json`, SDK imports | **Auto-Add** | Indexed by Librarian |
-| **Medium** | "MCP" mentions, agentic .env | **Review** | Flagged for GUI |
-| **Weak** | Generic `.env`, standard DB | **Ignore** | Filtered Out |
+| Tier | Flag | Convergence Area | Strategy | Features |
+| :--- | :--- | :---: | :--- | :--- |
+| **Lite** | `--lite` | **Distributed** | Zero-Dep | Portable, Atomic Reversal, Auto-Chmod |
+| **Standard** | (Default) | **Linked** | Pure Python | Structural Audit, Regex Indexing, Symlinks |
+| **Industrial** | `--permanent` | **Unified** | Infrastructure | Managed Venv, `jsonschema`, `psutil`, `PyYAML` |
 
 ---
 
 ## 🌟 Core Capabilities
 
-*   **Intelligent Scanning**: Efficiently crawls workspaces while ignoring noise like `node_modules` or `.git`.
-*   **Multi-Signal Gating**: Uses SDK detection, manifest parsing, and Docker metadata to categorize tools.
-*   **Runtime Monitoring**: Tracks process heartbeats and Docker container health in real-time.
-*   **Suite Synergy**: Exposes `inventory.yaml` for Librarian indexing, enabling unified knowledge queries.
-*   **Unified CLI/GUI**: Operates seamlessly via terminal or a lightweight web-based interface.
-*   **Nexus Integration**: Pulls configuration paths directly from the global Surgeon registry.
+*   **Atomic Transactions**: Multi-tool installation that reverts completely on failure.
+*   **Suite Synergy**: Detects sibling tools and triggers "Application Convergence" for a unified experience.
+*   **Intelligent Resolution**: Prompt/Recommend between multiple entry points (e.g., `.sh` vs `.py`).
+*   **Auto-Chmod Enforcement**: Automatically sets execute bits on all entry points and dependencies.
+*   **Pre-flight Intelligence**: Verifies disk health and permissions before execution.
+*   **Headless Mode**: Zero-touch replication for automated agents.
+
+---
+
+## 🔐 Universal Safety & Rollback
+
+Every operation follows a strict **Pre-flight -> Track -> Commit/Rollback** pattern.
+
+```mermaid
+flowchart LR
+    P[Pre-flight] --> T_Check[Track Bits]
+    T_Check --> Action[Install/Update]
+    Action -- Error --> R[Atomic Rollback]
+    Action -- Success --> C[Lock Manifest]
+```
+
+---
+
+## 📚 Documentation (Low Density Deep Dives)
+
+Detailed technical manuals for engineering reference:
+
+*   **[ARCHITECTURE.md](./ARCHITECTURE.md)**: Logic models, subsystems, and state machines.
+*   **[ENVIRONMENT.md](./ENVIRONMENT.md)**: Audit logic, OS-specific paths, and dependency rules.
+*   **[FEATURES.md](./FEATURES.md)**: Command matrix, resolve logic, and scorable feature logs.
+*   **[NEXUS_TECHNICAL_SPEC.md](./NEXUS_TECHNICAL_SPEC.md)**: Master reliability specification.
 
 
+
+## 🛠️ Workforce Nexus Command Reference
+
+| Tool | Shared Command | Direct Module Execution | Responsibility |
+| :--- | :--- | :--- | :--- |
+| **Activator** | `mcp-activator` | `python3 bootstrap.py` | Orchestration, Installation, Sync |
+| **Observer** | `mcp-observer` | `python3 -m mcp_inventory.cli` | UI/GUI, Health, Inventory |
+| **Surgeon** | `mcp-surgeon` | `python3 mcp_injector.py` | Injection, Config Hardening |
+| **Librarian** | `mcp-librarian` | `python3 mcp.py` | Knowledge SQLite, URL Persistence |
+
+---
+
+## 🖥️ GUI Management (The Observer Dashboard)
+
+The **Observer GUI** is your primary interface for monitoring the health and connection status of all Nexus components.
+
+*   **To Launch:**
+    ```bash
+    mcp-observer gui
+    # OR (Direct)
+    python3 -m mcp_inventory.cli gui
+    ```
+*   **Dashboard URL:** [http://localhost:8501](http://localhost:8501)
+*   **To Stop:**
+    - Press `Ctrl + C` in the terminal where the GUI is running.
+    - Closing the terminal session will also terminate the server.
+*   **To Restart:** Simply run the launch command again. The GUI will automatically re-index the current inventory.
+
+---
+
+## 🌍 Global Path & Workspace Context
+
+### 1. Setting the PATH
+For the `mcp-` commands to work from any directory, ensure your shell configuration (`~/.zshrc` or `~/.bashrc`) includes the Nexus bin directory:
+
+```bash
+export PATH="$HOME/.mcp-tools/bin:$PATH"
+```
+*(The Industrial/Standard bootstrap attempts to automate this step during installation.)*
+
+### 2. Execution Directory
+*   **Installation/Sync:** Always run `bootstrap.py` from the `repo-mcp-packager` root.
+*   **Daily Use:** Once installed, all `mcp-` commands can be executed from **any directory** within your workspace.
+
+---
 
 # Application Convergence & Synergy
 The "Nexus Application" mode is triggered when the bootstrapper detects all four modules (mcp-injector, mcp-link-library, mcp-server-manager, repo-mcp-packager) in the same workspace.
@@ -96,50 +159,7 @@ Global Path	Optional (Local first)	Recommended	Mandatory Enforcement
 
 ---
 
-## 👁️ GUI & Runtime Lenses
-
-The Observer provides four distinct "lenses" for monitoring your workforce:
-1.  **Application Health**: Versioning, state snapshots, and error severity.
-2.  **Command Execution**: Timeline of arguments, outcomes, and stderr captures.
-3.  **I/O Observability**: Tracking files and payloads passed between agents.
-4.  **Inventory Management**: One-click activation/deactivation of verified servers.
-
----
-
-## 🛠️ Nexus Command Reference (Observer Context)
-
-| Tool | Shared Command | Direct Module Execution |
-| :--- | :--- | :--- |
-| **Observer** | `mcp-observer` | `python3 -m mcp_inventory.cli` |
-| **Activator** | `mcp-activator` | `python3 bootstrap.py` |
-
----
-
-## 🖥️ GUI Management (The Observer Dashboard)
-
-*   **Launch Dashboard:** `mcp-observer gui`
-*   **Stop:** `Ctrl + C` in the terminal.
-*   **URL:** [http://localhost:8501](http://localhost:8501)
-
----
-
-## 📚 Master Documentation
-For the complete suite experience and detailed procedures, see:
-👉 **[NEXUS_GUIDE.md](../repo-mcp-packager/NEXUS_GUIDE.md)**
-
----
-
-## 📚 Documentation (Low Density Deep Dives)
-
-Detailed technical manuals for engineering reference:
-
-*   **[ARCHITECTURE.md](./ARCHITECTURE.md)**: Logic models, gate rules, and GUI-CLI contracts.
-*   **[ENVIRONMENT.md](./ENVIRONMENT.md)**: Scan roots, filesystem impact, and OS discovery logic.
-*   **[FEATURES.md](./FEATURES.md)**: Command matrix, scoring details, and scorable logs.
-
----
-
 ## 📝 Metadata
-*   **Status**: Hardened (Phase 9)
+*   **Status**: Production Ready / Hardened (Phase 9)
 *   **Author**: l00p3rl00p
 *   **Workflow**: Adheres to `@/fix-md-files-for-release`

@@ -1,50 +1,47 @@
-# User Outcomes - Local MCP-Server Discovery + Inventory
+# User Outcomes - Git Repo MCP Converter & Installer
 
-This document defines the goals and success criteria for the `mcpinv` tool.
+This document defines what success looks like for the "Clean Room Installer" and ensures the technical path aligns with the mission of friction-less replication.
 
 ---
 
 ## ⚡ Quick Summary
-* **Primary Goal**: Maintain a curated inventory of all MCP servers on a machine.
-* **Secondary Goal**: Provide real-time visibility into the running state of discovered servers.
+* **Mission Statement**: To provide a "Just Works" installation experience that creates zero-leak, isolated environments allowing agents to replicate the packager stack without friction.
 
 ---
 
 ## 📋 Table of Contents
-1. [Core Outcomes](#-core-outcomes)
-2. [User Scenarios](#-user-scenarios)
-3. [Success Metrics](#-success-metrics)
+1. [Successful Outcomes](#-successful-outcomes)
+2. [High-Fidelity Signals](#-high-fidelity-signals)
+3. [Design Guardrails](#-design-guardrails)
 
 ---
 
-## 🔍 Core Outcomes
+## 🔍 Successful Outcomes
 
 As a user, I want:
 
-### 1. Curated Inventory
-* **Single Source of Truth**: I want an authoritative list of all my MCP servers, regardless of where they are installed.
-* **High-Precision Discovery**: I want to scan my machine and find servers without being flooded by random folders that happen to have a `.env` file.
-* **Explainability**: I want to see *the evidence* (e.g., specific dependencies or markers) that led the system to identify a folder as an MCP server.
+### 1. Portability & Isolation
+* **Standalone Execution**: The `/serverinstaller` directory can be copied to any repo and execute correctly without external dependencies.
+* **Environment Integrity**: The installer bootstraps from the host's existing tools and create isolated environments (e.g., `.venv`) to prevent leaks.
+* **Zero-Touch Replication**: A real agent can execute `install.py --headless` and achieve a functional stack without human intervention.
 
-### 2. Operational Visibility
-* **Heartbeat Monitoring**: I want to know at a glance which MCP servers are currently running (via Docker or OS processes).
-* **Health Tracking**: I want to see if a server in my inventory is healthy, broken, or missing.
+### 2. Intelligent Discovery & Autonomy
+* **Autonomous Bootstrap**: The Activator can fetch the entire Workforce Nexus suite from GitHub, allowing it to move from "standalone script" to "suite architect" without local source siblings.
+* **Inventory Awareness**: The installer identifies all available components (Python, Node, Docker) and allows selective installation to prevent "package bloat."
+* **Local Source Parity**: In developer mode, the tool installs the application *exactly as it exists* in the local root, respecting custom modifications.
 
-### 3. Operator Control
-* **Manual Overrides**: If the automated scan misses something, I want to be able to add it manually and have it marked as a `manual` entry.
-* **Flexible Configuration**: I want to define which parts of my machine are scanned and how deep the scan goes.
+### 3. Trust & Transparency
+* **Surgical Integrity**: The `uninstall` command surgically reverses only the changes it made, ensuring the host is returned to its pre-installation state.
+* **Before/After Verification**: Clear reports allow the operator (human or agent) to verify every change. No stealth modifications to PATH or Registry.
 
-### 4. Operational Discipline
-* **Simple Lifecycle**: Starting, stopping, and restarting the dashboard must be intuitive and zero-side-effect.
-* **Non-Blocking Execution**: Stopping the GUI should not terminate background heartbeat monitors if they are running as system services (Industrial mode).
-
-### 5. Universal Observability
+### 4. Universal Observability
 * **Visual Status**: The user can see the health and connection status of all Nexus components (Observer, Librarian, Injector, Activator) in a single dashboard.
 * **Graceful Degradation**: The system functions even if components are missing, clearly indicating what is available vs. what needs installation.
 
 ### 5. Resilient Lifecycle
 * **Atomic Rollback**: If an installation fails at any step, the system automatically reverts to a clean state, leaving no partial artifacts.
-* **Safe Upgrades**: The installer respects existing configurations and only applies necessary updates, preventing "config drift" or data loss.
+* **Safe Upgrades**: The `mcp-activator --sync` command provides a unified update loop, ensuring all central tools stay synchronized with the latest security and feature patches.
+* **Context-Locked Execution**: Entry points carry their own venv and PYTHONPATH, ensuring they work regardless of the user's active terminal environment.
 
 ---
 
@@ -52,26 +49,22 @@ As a user, I want:
 
 To fully align with these outcomes, the following enhancements are planned:
 
-*   **Observability**: The GUI must eventually show *live* metrics (CPU/Memory) for the industrial tier, not just static "Presence".
-*   **Usability**: The "Librarian CRUD" tools need a UI frontend. Currently, they are "Headless Tools" only.
-*   **Resilience**: While `start_gui.sh` exists, the Python entry point (`python -m mcp_inventory.cli`) is more cross-platform compatible and should be the primary recommendation in all docs.
+*   **GUI Reliability (Target 95%+)**: Transition GUI from a blocking process to a background service with PID management.
+*   **Librarian Synergy**: Implement a dynamic watcher so the Librarian indexes changes in real-time, not just on installation.
+*   **Operational Awareness**: Add "version health" checks to the GUI dashboard to visually signal when a `--sync` is required.
 
 ---
 
-## 💻 User Scenarios
+## 🚥 High-Fidelity Signals
 
-### Scenario 1: Onboarding a New Machine
-* **Action**: User clones several repos and wants to know which ones are MCP-ready.
-* **Outcome**: User runs `mcpinv scan`. The tool correctly identifies 3 confirmed servers and flags 2 others for review. The user confirms the 2 candidates, and is now ready to attach them to their IDE.
-
-### Scenario 2: Debugging "Missing" Tools
-* **Action**: Claude Desktop says it can't find a tool, but the user is sure it's running.
-* **Outcome**: User runs `mcpinv running`. They see that the relevant Docker container is stopped. They restart the container, and `mcpinv` shows it as active again.
+* **Success**: `.librarian/manifest.json` correctly lists all artifacts, and `verify.py` reports `[VERIFIED]` for all items.
+* **Failure**: Encountering an interactive prompt in `--headless` mode.
+* **Success**: Running `uninstall.py` removes the `# Shesha Block` from `.zshrc` without deleting other aliases.
 
 ---
 
-## 📈 Success Metrics
+## 🛡 Design Guardrails
 
-* **S/N Ratio**: High signal-to-noise ratio in scans (minimum false positives).
-* **Inventory Reliability**: The `inventory.yaml` remains consistent and survives machine restarts.
-* **Integration Speed**: Reduced time to configure a new IDE by pulling from the curated inventory.
+* **No Sudo**: Reject any feature that requires global `sudo` permissions if a local `.venv` alternative exists.
+* **No Unmanaged Overwrites**: Reject any "auto-update" feature that replaces local configuration without a manifest-backed snapshot.
+* **Respect Local Code**: Treatment of the current repository state as the "source of truth." Never overwrite local changes with upstream templates.
