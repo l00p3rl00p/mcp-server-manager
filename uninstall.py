@@ -92,6 +92,7 @@ def main() -> int:
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
     parser.add_argument("--devlog", action="store_true", help="Write dev log (JSONL) with 90-day retention")
     parser.add_argument("--yes", action="store_true", help="Skip confirmation prompts (DANGEROUS)")
+    parser.add_argument("--dry-run", action="store_true", help="Print planned removals, but do not delete anything")
     ns, passthrough = parser.parse_known_args()
 
     script = _central_packager_uninstall()
@@ -106,6 +107,8 @@ def main() -> int:
         forwarded.append("--devlog")
     if ns.yes:
         forwarded.append("--yes")
+    if ns.dry_run:
+        forwarded.append("--dry-run")
     forwarded.extend(passthrough)
 
     if script.exists():

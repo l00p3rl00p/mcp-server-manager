@@ -2,6 +2,7 @@ from __future__ import annotations
 import http.server
 import json
 import logging
+import os
 import socketserver
 import subprocess
 import threading
@@ -11,10 +12,54 @@ from urllib.parse import urlparse
 
 from .config import STATE_DIR, APP_DIR
 from .logger import ACTIVE_LOGS_DIR
+from .nexus_devlog import prune_devlogs, devlog_path, log_event
 
 logger = logging.getLogger(__name__)
 
 WEB_DIR = Path(__file__).parent / "web"
+
+_ACTIVE_PROCS: dict[int, subprocess.Popen] = {}
+_REAPER_STARTED = False
+
+def _start_reaper() -> None:
+    """
+    Prevent ResourceWarnings by retaining spawned Popen handles and reaping them.
+    """
+    global _REAPER_STARTED
+    if _REAPER_STARTED:
+        return
+    _REAPER_STARTED = True
+
+    def _reap_loop():
+        import time
+        while True:
+            try:
+                dead = []
+                for pid, proc in list(_ACTIVE_PROCS.items()):
+                    rc = proc.poll()
+                    if rc is not None:
+                        try:
+                            proc.wait(timeout=0.1)
+                        except Exception:
+                            pass
+                        dead.append(pid)
+                for pid in dead:
+                    _ACTIVE_PROCS.pop(pid, None)
+            except Exception:
+                pass
+            time.sleep(0.2)
+
+    t = threading.Thread(target=_reap_loop, daemon=True)
+    t.start()
+
+def _maybe_devlog() -> Path | None:
+    # Best-effort shared devlog capture for GUI-triggered subprocess runs.
+    # Enabled by default if writable; never blocks GUI.
+    try:
+        prune_devlogs(days=90)
+        return devlog_path()
+    except Exception:
+        return None
 
 class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -235,9 +280,10 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
             # Decide on the command to run
             import sys
             import time
-            import os
             action_log_path = ACTIVE_LOGS_DIR / f"action_{int(time.time())}.log"
             action_log_path.parent.mkdir(parents=True, exist_ok=True)
+            devlog = _maybe_devlog()
+            _start_reaper()
             
             if command == "attach":
                 # Locate mcp-injector in Nexus
@@ -302,6 +348,9 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
             with open(action_log_path, "w") as f:
                 f.write(f"--- COMMAND: {' '.join(cmd)} ---\n")
                 process = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, text=True)
+                _ACTIVE_PROCS[process.pid] = process
+
+            log_event(devlog, "gui_action_spawned", {"command": command, "cmd": cmd, "action_log": str(action_log_path), "pid": process.pid})
                 
             response = {
                 "success": True,
@@ -329,6 +378,24 @@ def start_server(port: int = 8501):
 
     handler = MCPInvHandler
     # SECURITY: Bind only to local loopback to prevent external access
+    _start_reaper()
     with socketserver.TCPServer(("127.0.0.1", port), handler) as httpd:
         print(f"Serving GUI at http://localhost:{port} (Local Only)")
         httpd.serve_forever()
+
+
+def create_server(port: int = 0) -> socketserver.TCPServer:
+    """
+    Create (but do not start) a GUI HTTP server. Used by E2E tests.
+    """
+    WEB_DIR.mkdir(parents=True, exist_ok=True)
+    ACTIVE_LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+    handler = MCPInvHandler
+
+    class _ReuseTCPServer(socketserver.TCPServer):
+        allow_reuse_address = True
+
+    _start_reaper()
+    return _ReuseTCPServer(("127.0.0.1", port), handler)
