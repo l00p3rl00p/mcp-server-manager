@@ -40,8 +40,10 @@ This document provides a complete list of commands for all modules in the Workfo
 | **Remove Server** | `mcp-surgeon remove [client] [name]` | `python3 mcp_injector.py remove ...` |
 | **List Config** | `mcp-surgeon list [client]` | `python3 mcp_injector.py list ...` |
 | **Guided Mode** | `mcp-surgeon interactive` | `python3 mcp_injector.py interactive` |
+| **Startup Detect + Prompt Inject** | `mcp-surgeon --startup-detect` | `python3 mcp_injector.py --startup-detect` |
+| **List Known Clients** | `mcp-surgeon --list-clients` | `python3 mcp_injector.py --list-clients` |
 
-*Supported Clients: `claude`, `cursor`, `vscode`, `xcode`, `codex`, `aistudio`*
+*Supported Clients: `claude`, `cursor`, `vscode`, `xcode`, `codex`, `aistudio`, `google-antigravity` (alias of AI Studio)*
 
 ---
 
@@ -76,3 +78,13 @@ If `mcp-` commands are not found, add this to your `~/.zshrc` (macOS) or `~/.bas
 ```bash
 export PATH="$HOME/.mcp-tools/bin:$PATH"
 ```
+
+---
+
+## 🧩 GUI Widget Coverage
+
+The Nexus GUI scaffold in `repo-mcp-packager/gui/` now maps **every executable command** in this `COMMANDS.md` table to a widget action.
+
+* Widgets are **tier-gated** (`lite`, `standard`, `permanent`): unsupported actions render visually unchecked.
+* Widget execution routes through a safe backend allowlist (`widget_id`-based), then reports stdout/stderr and exit code.
+* Scope model is preserved: each repo remains standalone, while suite commands still assemble the integrated package.

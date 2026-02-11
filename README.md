@@ -144,6 +144,18 @@ export PATH="$HOME/.mcp-tools/bin:$PATH"
 
 ---
 
+## 🧩 GUI Control Surface (Tier-Aware)
+
+The GUI scaffold in `repo-mcp-packager/gui/` is a control surface over CLI behavior:
+
+*   **Lite**: only lite-safe actions should run; non-lite actions appear visually unchecked.
+*   **Standard**: enables linked-workspace actions and operational commands.
+*   **Permanent**: enables hardened infrastructure actions (managed venv/path/integrity workflows).
+
+The widget model maps to the command catalog and executes through an allowlisted backend runner, reporting command output and status.
+
+---
+
 # Application Convergence & Synergy
 The "Nexus Application" mode is triggered when the bootstrapper detects all four modules (mcp-injector, mcp-link-library, mcp-server-manager, repo-mcp-packager) in the same workspace.
 

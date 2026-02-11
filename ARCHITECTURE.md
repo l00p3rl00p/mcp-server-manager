@@ -37,6 +37,8 @@ The "Surgeon" that bridges the gap between the installer and the user's IDE.
 
 *   **Bracket Hell Prevention**: Specialized JSON parser that handles comma placement and list management for IDE config files.
 *   **Atomic Transactions**: Always creates a `.backup` before writing. Uses temporary files and `os.replace` to prevent corruption.
+*   **Startup Detection & Prompting**: Can auto-detect common MCP-capable IDE clients at startup and prompt injection.
+*   **Suite Component Injection**: When full Nexus binaries are detected, injection is component-aware and prompted per created component.
 
 ### 4. The Bridge Generator (`bridge.py`)
 Converts legacy scripts into AI-accessible MCP tools.
@@ -113,6 +115,14 @@ Each tool in the Nexus implements `bootstrap.py` with a recursive discovery loop
 3.  **Level 2**: Fetch from GitHub.
 
 This ensures that clicking "Install" on any one tool can safely and reliably bring the entire Workforce Nexus to life.
+
+## 🧩 GUI Control Surface Architecture
+
+The GUI scaffold (`repo-mcp-packager/gui/`) acts as an orchestration layer over CLI commands:
+
+1. `widgets.json` defines the command model and tier availability (`lite`, `standard`, `permanent`).
+2. `server.py` exposes allowlisted widget execution by `widget_id` and returns command behavior (stdout/stderr/exit code).
+3. `app.js` renders visual unchecked widgets when a command is outside the selected tier.
 
 ---
 

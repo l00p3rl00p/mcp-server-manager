@@ -33,6 +33,11 @@ The Workforce Nexus centralizes all artifacts in a predictable location based on
 | **Linux** | `~/.mcp-tools` | `~/.config/Claude/claude_desktop_config.json` |
 | **Windows** | `%USERPROFILE%\.mcp-tools` | `%APPDATA%\Claude\claude_desktop_config.json` |
 
+Additional common MCP client paths used by injector discovery include:
+* `codex`: `~/Library/Application Support/Codex/mcp_servers.json` (plus OS-specific fallbacks)
+* `aistudio`: `~/.config/aistudio/mcp_servers.json` (plus OS-specific fallbacks)
+* `google-antigravity`: alias of AI Studio path set
+
 ---
 
 ## 🛠 Environment Audit Logic: The Pre-flight Probe
@@ -73,6 +78,11 @@ export PATH="/Users/user/project/.venv/bin:$PATH"
 # Shesha Block END
 ```
 *The uninstall script specifically targets everything between these markers.*
+
+### IDE Injection Policy (Startup Detect)
+*   The injector supports startup client discovery (`--startup-detect`) and prompts before mutation.
+*   `claude` is always included in the common prompt set.
+*   If full Nexus-created binaries exist (`~/.mcp-tools/bin`), the injector prompts for each created component instead of blind bulk injection.
 
 ### Permissions Hardening (Phase 9)
 The environment must support `chmod` (POSIX) or equivalent ACL modifications.

@@ -53,6 +53,11 @@ To fully align with these outcomes, the following enhancements are planned:
 *   **Librarian Synergy**: Implement a dynamic watcher so the Librarian indexes changes in real-time, not just on installation.
 *   **Operational Awareness**: Add "version health" checks to the GUI dashboard to visually signal when a `--sync` is required.
 
+### 2026-02-11 Alignment Update
+* **Injector Startup Detect**: Added startup detection/prompt flow for common IDE clients, including `claude`, `codex`, and `aistudio` (plus `google-antigravity` alias).
+* **Package-Created Component Injection Policy**: If full Nexus components are detected (`~/.mcp-tools/bin`), the injector now prompts injection per component (`nexus-activator`, `nexus-observer`, `nexus-surgeon`, `nexus-librarian`).
+* **Tier-Aware GUI Control Surface**: GUI command widgets now map to command catalog behavior with visual unchecked state for unsupported tier actions.
+
 ---
 
 ## 🚥 High-Fidelity Signals
