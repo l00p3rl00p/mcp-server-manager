@@ -11,6 +11,12 @@ const state = {
         active: false,
         logName: null,
         timer: null
+    },
+    system: {
+        observer: false,
+        librarian: false,
+        injector: false,
+        activator: false
     }
 };
 
@@ -74,6 +80,19 @@ async function fetchLogs() {
         }
     } catch (e) {
         console.error("Fetch logs failed", e);
+    }
+}
+
+async function fetchSystemStatus() {
+    try {
+        const res = await fetch(`${API_BASE}/system_status`);
+        if (res.ok) {
+            const data = await res.json();
+            state.system = data;
+            renderNexusStatus();
+        }
+    } catch (e) {
+        console.error("Fetch system status failed", e);
     }
 }
 
@@ -217,8 +236,27 @@ async function runHealthCheck() {
 // --- Rendering ---
 
 function updateSystemStatus(text, className) {
-    els.statusBadge.textContent = text;
-    els.statusBadge.className = `status-badge ${className}`;
+    // Legacy single-badge support (for errors)
+    // We might want to keep it or repurpose it. 
+    // For now, let's leave it but focusing on the Nexus Bar.
+}
+
+function renderNexusStatus() {
+    const updatePill = (id, active) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (active) {
+            el.className = 'status-pill status-green';
+            el.innerHTML = el.innerHTML.replace('⚪', '🟢').replace('🔴', '🟢'); // visual fix if needed
+        } else {
+            el.className = 'status-pill status-gray';
+        }
+    };
+
+    updatePill('status-observer', state.system.observer);
+    updatePill('status-librarian', state.system.librarian);
+    updatePill('status-injector', state.system.injector);
+    updatePill('status-activator', state.system.activator);
 }
 
 function renderHealth() {
@@ -348,7 +386,10 @@ async function fetchAll() {
     await Promise.all([
         fetchHealth(),
         fetchInventory(),
-        fetchLogs()
+        fetchHealth(),
+        fetchInventory(),
+        fetchLogs(),
+        fetchSystemStatus()
     ]);
 }
 
@@ -357,7 +398,11 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchAll();
 
     // Poll logs every 5s
-    setInterval(fetchLogs, 5000);
+    // Poll logs every 5s
+    setInterval(() => {
+        fetchLogs();
+        fetchSystemStatus();
+    }, 5000);
 
     // We could poll status too, to see if actions completed?
 });

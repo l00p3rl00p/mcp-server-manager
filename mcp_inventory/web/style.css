@@ -288,3 +288,36 @@ tr:hover {
     font-size: 0.75rem;
     color: var(--text-secondary);
 }
+/* Nexus Status Bar */
+.nexus-status-bar {
+    display: flex;
+    gap: 12px;
+}
+
+.status-pill {
+    font-size: 0.85rem;
+    padding: 4px 10px;
+    border-radius: 12px;
+    background: #eee;
+    color: #666;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.3s ease;
+}
+
+.status-gray { background: #eee; color: #888; opacity: 0.6; }
+.status-green { background: #e6ffed; color: #1a7f37; border: 1px solid #ccebd4; }
+.status-red { background: #ffeef0; color: #cf222e; border: 1px solid #ffdce0; }
+
+/* Managed Badge */
+.badge-managed {
+    background: #ddf4ff;
+    color: #0969da;
+    border: 1px solid #b6e3ff;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+}

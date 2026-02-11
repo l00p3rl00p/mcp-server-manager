@@ -21,10 +21,15 @@ Technical requirements and configuration details for the `mcpinv` tool.
 ---
 
 ## 📂 FileSystem Impact
+### Nexus Convergence
+When running as part of the **Workforce Nexus**, the Observer uses the shared root:
+* **Nexus Root**: `~/.mcp-tools/`
+* **Inventory**: `~/.mcp-tools/mcp-server-manager/inventory.yaml`
 
-`mcpinv` stores all user data in a hidden directory in your home folder:
+### Standalone Mode (Legacy)
+`mcpinv` stores data in:
 * **Config**: `~/.mcpinv/config.json`
-* **Inventory**: `~/.mcpinv/inventory.yaml` (The source of truth)
+* **Inventory**: `~/.mcpinv/inventory.yaml`
 
 ---
 

@@ -11,83 +11,87 @@
 <body>
     <div class="app-container">
         <header class="top-bar">
-            <div class="logo">MCP Manager</div>
-            <div id="system-status" class="status-badge">Checking...</div>
-        </header>
+            <div class="logo">Workforce Nexus</div>
+            <div id="nexus-status-bar" class="nexus-status-bar">
+                <span id="status-observer" class="status-pill status-gray" title="Observer">👁️ Observer</span>
+                <span id="status-librarian" class="status-pill status-gray" title="Librarian">📚 Librarian</span>
+                <span id="status-injector" class="status-pill status-gray" title="Injector">💉 Injector</span>
+                <span id="status-activator" class="status-pill status-gray" title="Activator">🚀 Activator</span>
+            </div>
 
-        <main class="dashboard-grid">
-            <!-- Health Section -->
-            <section class="card health-card">
-                <div class="card-header">
-                    <h2>System Health</h2>
-                    <button class="btn-icon" onclick="runHealthCheck()" title="Run Health Check">🔄</button>
-                </div>
-                <div id="health-metrics" class="metrics-grid">
-                    <!-- Populated by JS -->
-                    <div class="loading">Loading health data...</div>
-                </div>
-            </section>
+            <main class="dashboard-grid">
+                <!-- Health Section -->
+                <section class="card health-card">
+                    <div class="card-header">
+                        <h2>System Health</h2>
+                        <button class="btn-icon" onclick="runHealthCheck()" title="Run Health Check">🔄</button>
+                    </div>
+                    <div id="health-metrics" class="metrics-grid">
+                        <!-- Populated by JS -->
+                        <div class="loading">Loading health data...</div>
+                    </div>
+                </section>
 
-            <!-- Actions / Quick Commands -->
-            <section class="card actions-card">
-                <div class="card-header">
-                    <h2>Quick Actions</h2>
-                </div>
-                <div class="action-buttons">
-                    <button class="btn primary" onclick="triggerAction('scan')">Full Scan</button>
-                    <button class="btn primary" onclick="triggerAction('attach')">Attach to IDEs</button>
-                    <button class="btn secondary" onclick="triggerAction('running')">Check Running</button>
-                    <!-- <button class="btn secondary" onclick="triggerAction('config')">Edit Config</button> -->
-                </div>
-            </section>
+                <!-- Actions / Quick Commands -->
+                <section class="card actions-card">
+                    <div class="card-header">
+                        <h2>Quick Actions</h2>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn primary" onclick="triggerAction('scan')">Full Scan</button>
+                        <button class="btn primary" onclick="triggerAction('attach')">Attach to IDEs</button>
+                        <button class="btn secondary" onclick="triggerAction('running')">Check Running</button>
+                        <!-- <button class="btn secondary" onclick="triggerAction('config')">Edit Config</button> -->
+                    </div>
+                </section>
 
-            <!-- Maintenance / System Tools -->
-            <section class="card maintenance-card">
-                <div class="card-header">
-                    <h2>Maintenance</h2>
-                </div>
-                <div class="action-buttons">
-                    <button class="btn secondary" onclick="triggerAction('terminal')">Open Terminal</button>
-                    <button class="btn secondary" onclick="triggerAction('update')">Update Tools</button>
-                </div>
-            </section>
+                <!-- Maintenance / System Tools -->
+                <section class="card maintenance-card">
+                    <div class="card-header">
+                        <h2>Maintenance</h2>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn secondary" onclick="triggerAction('terminal')">Open Terminal</button>
+                        <button class="btn secondary" onclick="triggerAction('update')">Update Tools</button>
+                    </div>
+                </section>
 
-            <!-- Inventory Section -->
-            <section class="card inventory-card full-width">
-                <div class="card-header">
-                    <h2>Inventory</h2>
-                    <span id="inventory-count" class="badge">0</span>
-                </div>
-                <div class="table-container">
-                    <table id="inventory-table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Status</th>
-                                <th>Confidence</th>
-                                <th>Transport</th>
-                                <th>Path</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Populated by JS -->
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+                <!-- Inventory Section -->
+                <section class="card inventory-card full-width">
+                    <div class="card-header">
+                        <h2>Inventory</h2>
+                        <span id="inventory-count" class="badge">0</span>
+                    </div>
+                    <div class="table-container">
+                        <table id="inventory-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Status</th>
+                                    <th>Confidence</th>
+                                    <th>Transport</th>
+                                    <th>Path</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
 
-            <!-- Logs / Execution Section -->
-            <section class="card logs-card full-width">
-                <div class="card-header">
-                    <h2>Recent Activity</h2>
-                    <button class="btn-sm" onclick="fetchLogs()">Refresh</button>
-                </div>
-                <div id="log-viewer" class="log-viewer">
-                    <!-- Populated by JS -->
-                </div>
-            </section>
-        </main>
+                <!-- Logs / Execution Section -->
+                <section class="card logs-card full-width">
+                    <div class="card-header">
+                        <h2>Recent Activity</h2>
+                        <button class="btn-sm" onclick="fetchLogs()">Refresh</button>
+                    </div>
+                    <div id="log-viewer" class="log-viewer">
+                        <!-- Populated by JS -->
+                    </div>
+                </section>
+            </main>
     </div>
 
     <!-- Action Wizard Modal -->

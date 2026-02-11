@@ -40,6 +40,11 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
             self.api_get_logs()
             return
 
+        # API: System Status
+        if path == "/api/system_status":
+            self.api_system_status()
+            return
+
         # Serve Static Files
         super().do_GET()
 
@@ -140,6 +145,57 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json_response({"logs": parsed_logs})
         except Exception as e:
             self.send_error(500, str(e))
+
+    def api_system_status(self):
+        """Check for presence of Nexus components."""
+        import sys
+        import os
+        from pathlib import Path
+        
+        status = {
+            "observer": True, # Self
+            "librarian": False,
+            "injector": False,
+            "activator": False
+        }
+        
+        # Locate Nexus Root
+        if sys.platform == "win32":
+            nexus_root = Path(os.environ['USERPROFILE']) / ".mcp-tools"
+        else:
+            nexus_root = Path.home() / ".mcp-tools"
+            
+        # Check components (Heartbeat)
+        def check_heartbeat(path, args=["--help"]):
+            try:
+                # Active check: Run the tool with --help to verify it loads and runs
+                subprocess.run(
+                    [sys.executable, str(path)] + args,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=1,
+                    check=True
+                )
+                return True
+            except Exception:
+                return False
+
+        # Librarian
+        lib_path = nexus_root / "mcp-link-library" / "mcp.py"
+        if lib_path.exists():
+            status["librarian"] = check_heartbeat(lib_path)
+            
+        # Injector
+        inj_path = nexus_root / "mcp-injector" / "mcp_injector.py"
+        if inj_path.exists():
+            status["injector"] = check_heartbeat(inj_path)
+            
+        # Activator
+        act_path = nexus_root / "repo-mcp-packager" / "bootstrap.py"
+        if act_path.exists():
+            status["activator"] = check_heartbeat(act_path)
+            
+        self.send_json_response(status)
 
     def api_trigger_action(self, command: str):
         # Allowed commands whitelist for security
@@ -272,6 +328,7 @@ def start_server(port: int = 8501):
         (WEB_DIR / "index.html").write_text("<h1>MCP Inventory GUI Placeholder</h1>")
 
     handler = MCPInvHandler
-    with socketserver.TCPServer(("", port), handler) as httpd:
-        print(f"Serving GUI at http://localhost:{port}")
+    # SECURITY: Bind only to local loopback to prevent external access
+    with socketserver.TCPServer(("127.0.0.1", port), handler) as httpd:
+        print(f"Serving GUI at http://localhost:{port} (Local Only)")
         httpd.serve_forever()

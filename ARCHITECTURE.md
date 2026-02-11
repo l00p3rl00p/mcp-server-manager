@@ -8,8 +8,10 @@
 
 ---
 
-## 🔍 Core Design Principles
+## 🔍 Nexus Application Context
+The **Observer** is a core component of the **Workforce Nexus**. It provides the observability layer for the converged suite. For the full architectural roadmap, see the [Master Nexus Guide](../repo-mcp-packager/NEXUS_GUIDE.md).
 
+## 🏗️ Core Design Principles
 **Scan wide, accept strict.**
 
 The system is designed to crawl large Directory trees efficiently while maintaining a high bar for what is considered an "MCP Server".

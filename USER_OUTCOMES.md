@@ -34,6 +34,28 @@ As a user, I want:
 * **Manual Overrides**: If the automated scan misses something, I want to be able to add it manually and have it marked as a `manual` entry.
 * **Flexible Configuration**: I want to define which parts of my machine are scanned and how deep the scan goes.
 
+### 4. Operational Discipline
+* **Simple Lifecycle**: Starting, stopping, and restarting the dashboard must be intuitive and zero-side-effect.
+* **Non-Blocking Execution**: Stopping the GUI should not terminate background heartbeat monitors if they are running as system services (Industrial mode).
+
+### 5. Universal Observability
+* **Visual Status**: The user can see the health and connection status of all Nexus components (Observer, Librarian, Injector, Activator) in a single dashboard.
+* **Graceful Degradation**: The system functions even if components are missing, clearly indicating what is available vs. what needs installation.
+
+### 5. Resilient Lifecycle
+* **Atomic Rollback**: If an installation fails at any step, the system automatically reverts to a clean state, leaving no partial artifacts.
+* **Safe Upgrades**: The installer respects existing configurations and only applies necessary updates, preventing "config drift" or data loss.
+
+---
+
+## 🚀 Roadmap to 100% Compliance
+
+To fully align with these outcomes, the following enhancements are planned:
+
+*   **Observability**: The GUI must eventually show *live* metrics (CPU/Memory) for the industrial tier, not just static "Presence".
+*   **Usability**: The "Librarian CRUD" tools need a UI frontend. Currently, they are "Headless Tools" only.
+*   **Resilience**: While `start_gui.sh` exists, the Python entry point (`python -m mcp_inventory.cli`) is more cross-platform compatible and should be the primary recommendation in all docs.
+
 ---
 
 ## 💻 User Scenarios

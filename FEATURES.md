@@ -1,60 +1,104 @@
-# The Observer: Features & Commands
+# Features & Capabilities: The Observer (mcp-server-manager)
 
-## Overview
-**The Observer (`mcp-server-manager`)** provides visibility and control over your entire MCP ecosystem. It scans your machine for potential servers, validates them, and serves as the central inventory.
+**Unified Intelligence & Control for the Workforce Nexus.**
 
-## Features
+The Observer provides real-time visibility into the health and logs of your MCP ecosystem. This document provides a high-density reference for its discovery engine, monitoring protocols, and integrated maintenance actions.
 
-### 1. 🖥️ GUI Dashboard
-*   **Inventory View**: See all your MCP servers in one place.
-*   **Health Checks**: Real-time status of your system (Docker, Processes, Nexus DB).
-*   **Logs**: View live logs from the backend and the Librarian.
-*   **Actions**: Run scans, checks, updates, and attach IDEs directly from the browser.
+---
 
-### 2. 🔍 Intelligent Scanning
-*   **Discovery**: Finds servers via `package.json`, `pyproject.toml`, or `docker-compose.yml`.
-*   **Gating**: Distinguishes between "Strong Signals" (auto-add) and "Candidates" (review queue).
-*   **Inventory**: Maintains a curated YAML list at `~/.mcpinv/inventory.yaml`.
+## 📊 Feature Matrix
 
-### 3. 💓 System Health
-*   **Heartbeats**: Detects if servers are actually running (Docker containers, OS processes).
-*   **Verification**: Ensures the internal databases and config files are intact.
+| Feature | Description | Lite Mode | Permanent Mode |
+| :--- | :--- | :---: | :---: |
+| **Auto-Discovery** | Scans filesystem for MCP servers | Glob-based | `pathspec` (Tiered) |
+| **Health Monitoring** | Real-time process & Docker status | Basic (On-demand) | Continuous (Sync) |
+| **Log Ingestion** | Unified log streaming console | Standard Output | Persistent Logs |
+| **Maintenance GUI** | Interactive browser control panel | ✅ | ✅ |
+| **Auto-Chmod** | (In Actions) Standardizes permissions | ✅ | ✅ |
 
-## Command Reference
+---
 
-### Core
-```bash
-# Scan your system for MCP servers
-python -m mcp_inventory.cli scan
+## 📋 Table of Contents
+1. [Discovery Architecture](#discovery-architecture)
+2. [Command Matrix](#command-matrix)
+3. [GUI Maintenance Actions](#gui-maintenance-actions)
+4. [Health Check Indicators](#health-check-indicators)w
 
-# Launch the Web GUI
-python -m mcp_inventory.cli gui
-```
+---
 
-### Management
-```bash
-# Add a server manually
-python -m mcp_inventory.cli add --name my-server --path /path/to/server
+## 🔍 Discovery Architecture
 
-# Remove a server
-python -m mcp_inventory.cli remove --name my-server
+The Observer classifies potential servers into a tiered priority queue.
 
-# List status of all servers
-python -m mcp_inventory.cli list
-```
-
-### Diagnostics
-```bash
-# Check system health
-python -m mcp_inventory.cli health
-
-# Check for running instances
-python -m mcp_inventory.cli running
+```mermaid
+graph TD
+    S[System Scan] --> P1{Strong Signal?}
+    P1 -- package.json / pyproject.toml --> I[(Inventory)]
+    P1 -- docker-compose.yml --> I
+    P1 -- No --> P2{Legacy Candidate?}
+    P2 -- script.py / main.js --> Q[Review Queue]
+    Q -- User Approved --> I
+    I --> M[Continuous Monitoring]
 ```
 
 ---
-**Part of the Workforce Nexus**
-*   **The Surgeon**: `mcp-injector` (Configuration)
-*   **The Observer**: `mcp-server-manager` (Dashboard)
-*   **The Activator**: `repo-mcp-packager` (Automation)
-*   **The Librarian**: `mcp-link-library` (Knowledge)
+
+## 💻 Command Matrix (Lookup)
+
+| Mode | Command | Action | Key Flag |
+| :--- | :--- | :--- | :--- |
+| **Dashboard** | `python mcp_server_manager.py --gui` | Launch web interface | `--port 5001` |
+| **Scan** | `python -m mcp_inventory.cli scan` | Deep filesystem sweep | `--path ~/Dev` |
+| **Inventory**| `python mcp_server_manager.py --inventory`| JSON/YAML inventory list | `--format json` |
+| **Health** | `python mcp_server_manager.py --check` | Run system-wide diagnostics| `--verbose` |
+| **Logs** | `python mcp_server_manager.py --logs` | Tail server logs | `--name shesha` |
+
+---
+
+## 🛠 GUI Maintenance Actions
+
+The Observer GUI is the central cockpit for Nexus maintenance:
+
+*   **Open Terminal**: Spawns a new terminal session in the target server's home directory.
+*   **Update Tool**: Triggers the Activator to pull latest code and reinstall dependencies.
+*   **Permissions Hardening**: Automatically runs `chmod +x` on all entry points during an update.
+*   **Restart Server**: Safely kills active server processes and restarts the bridge.
+
+---
+
+## 📊 Health Check Indicators (TTY)
+
+| Metric | Pass | Warn | Fail |
+| :--- | :---: | :---: | :---: |
+| **Nexus DB** | Integrity OK | Vacuum Required | **Missing / Locked** |
+| **Docker** | Daemon Online | No containers | **Daemon Offline** |
+| **Permissions** | Write Access ✅ | Read-only | **Access Denied** |
+
+---
+
+> **Author**: l00p3rl00p / Workforce Nexus
+> **Reference**: [NEXUS_TECHNICAL_SPEC.md](../repo-mcp-packager/NEXUS_TECHNICAL_SPEC.md)
+
+
+
+## 🏢 The Nexus Convergence Model
+The Observer supports three tiers of organizational binding:
+
+| Feature | Lite (Loose Binding) | Standard (Close Binding) | Industrial (Managed App) |
+| :--- | :--- | :--- | :--- |
+| **Logic Area** | Repos remain in workspace | `~/.mcp-tools/suite` (Symlinks) | `~/.mcp-tools/app` (Managed) |
+| **Environment** | OS-Default / Manual | Per-module venvs | Unified Hardened Venv |
+| **Update Path** | Manual per repo | Live (via Symlinks) | On-Demand (`nexus-sync`) |
+
+---
+
+## 📚 Master Documentation
+For the complete suite experience and detailed procedures, see:
+👉 **[NEXUS_GUIDE.md](../repo-mcp-packager/NEXUS_GUIDE.md)**
+
+---
+
+> **Author**: l00p3rl00p / Workforce Nexus
+> **Reference**: [ARCHITECTURE.md](./ARCHITECTURE.md) | [ENVIRONMENT.md](./ENVIRONMENT.md)
+
+
