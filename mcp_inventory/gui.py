@@ -7,6 +7,7 @@ import socketserver
 import subprocess
 import threading
 from pathlib import Path
+from typing import Optional
 from typing import Any, Dict
 from urllib.parse import urlparse
 
@@ -52,7 +53,7 @@ def _start_reaper() -> None:
     t = threading.Thread(target=_reap_loop, daemon=True)
     t.start()
 
-def _maybe_devlog() -> Path | None:
+def _maybe_devlog() -> Optional[Path]:
     # Best-effort shared devlog capture for GUI-triggered subprocess runs.
     # Enabled by default if writable; never blocks GUI.
     try:

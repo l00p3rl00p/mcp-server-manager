@@ -31,6 +31,44 @@ body {
     padding: 20px;
 }
 
+/* Tabs */
+.tabbar {
+    display: flex;
+    gap: 8px;
+    margin: 14px 0 18px;
+    padding: 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: color-mix(in oklab, var(--bg-card), #000 12%);
+}
+
+.tabbar .tab {
+    appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.tabbar .tab:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.tabbar .tab.active {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.35);
+    color: var(--text-primary);
+}
+
+.tabs .tab-panel {
+    min-height: 200px;
+}
+
 /* Header */
 .top-bar {
     display: flex;
@@ -298,17 +336,43 @@ tr:hover {
     font-size: 0.85rem;
     padding: 4px 10px;
     border-radius: 12px;
-    background: #eee;
-    color: #666;
+    border: 1px solid var(--border-color);
+    background: color-mix(in oklab, var(--bg-card), #000 18%);
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     gap: 6px;
     transition: all 0.3s ease;
+    cursor: pointer;
 }
 
-.status-gray { background: #eee; color: #888; opacity: 0.6; }
-.status-green { background: #e6ffed; color: #1a7f37; border: 1px solid #ccebd4; }
-.status-red { background: #ffeef0; color: #cf222e; border: 1px solid #ffdce0; }
+.status-gray { opacity: 0.65; }
+.status-green { background: rgba(16, 185, 129, 0.12); color: #bff7e6; border-color: rgba(16, 185, 129, 0.35); opacity: 1; }
+.status-red { background: rgba(239, 68, 68, 0.12); color: #ffd0d0; border-color: rgba(239, 68, 68, 0.35); opacity: 1; }
+
+.status-pill:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.55);
+    outline-offset: 2px;
+}
+
+/* Proxy */
+.proxy-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr 2fr;
+    gap: 12px;
+    margin: 12px 0;
+}
+
+.field-label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.field {
+    width: 100%;
+}
 
 /* Managed Badge */
 .badge-managed {

@@ -1,104 +1,66 @@
-# Environment Specification - Git Repo MCP Converter & Installer
+# ENVIRONMENT.md — Workforce Nexus Suite (mcp-server-manager)
 
-**Unified Environment Requirements & Audit Logic.**
-
-This document provides a low-density technical manual for the host environment requirements, dependency resolution logic, and OS-specific configurations used by the Workforce Nexus Activator.
+Host environment requirements, safety rules, and OS-specific paths for the **Server Manager** repo (inventory + GUI).
 
 ---
 
 ## 🔍 Core Dependency Rules
 
-### 1. Python Runtimes
-*   **The Orchestrator (`install.py`)**: Requires **Python 3.9+**.
-*   **The Application Engine**: The core workforce tools are optimized for **Python 3.11+**.
-*   **Isolation Policy**: The installer will always prioritize the creation of a local `.venv` within the project root to prevent global package conflicts.
+### Python
+* **Minimum**: Python **3.9+**
+* **Recommended**: Python **3.11+**
+* **Isolation**: When installed as part of the suite, runs from the **central** Nexus environment under `~/.mcp-tools` (no workspace venv required).
 
-### 2. Node.js & NPM
-*   **Requirement**: Node.js v18+ and NPM v9+ are required only if the `gui/` directory is present.
-*   **Isolation Policy**: Use `--npm-policy local` to ensure binaries are installed in a project-private context.
-
-### 3. Docker Ecosystem
-*   **Requirement**: A running Docker Desktop or Engine daemon is required for sandbox operations.
-*   **Validation**: The installer executes `docker info` to verify daemon status. If inaccessible, the `--docker-policy` determines whether to skip or fail.
+### GUI runtime
+* The GUI runs as a local web app (served from Python). No Node/Docker required for the default GUI.
 
 ---
 
-## 🛠 OS-Specific Path Matrix
+## 🛠 Central Paths (Suite Home)
 
-The Workforce Nexus centralizes all artifacts in a predictable location based on the host OS.
+The suite uses predictable, user-owned paths:
+* Nexus home: `~/.mcp-tools`
+* Tools bin: `~/.mcp-tools/bin`
+* Shared venv (optional): `~/.mcp-tools/.venv`
+* Shared state + devlogs: `~/.mcpinv/`
+* Inventory file (created on install if missing): `~/.mcp-tools/mcp-server-manager/inventory.yaml`
 
-| Platform | Nexus Home Root | Config Path |
-| :--- | :--- | :--- |
-| **macOS** | `~/.mcp-tools` | `~/Library/Application Support/Cloud/claude_desktop_config.json` |
-| **Linux** | `~/.mcp-tools` | `~/.config/Claude/claude_desktop_config.json` |
-| **Windows** | `%USERPROFILE%\.mcp-tools` | `%APPDATA%\Claude\claude_desktop_config.json` |
-
-Additional common MCP client paths used by injector discovery include:
-* `codex`: `~/Library/Application Support/Codex/mcp_servers.json` (plus OS-specific fallbacks)
-* `aistudio`: `~/.config/aistudio/mcp_servers.json` (plus OS-specific fallbacks)
-* `google-antigravity`: alias of AI Studio path set
-
----
-
-## 🛠 Environment Audit Logic: The Pre-flight Probe
-
-The `audit.py` module performs a multi-stage probe to build a system capabilities map.
-
-### Stage 1: Shell Detection
-The probe identifies the active shell via the `SHELL` environment variable.
-*   **Targets**: `.zshrc` (macOS default), `.bashrc`, `.bash_profile`.
-*   **Action**: Captures the path to the primary RC file for future PATH modifications.
-
-### Stage 2: Binary Path Discovery
-Uses `shutil.which` to find system binaries for:
-*   `python3`
-*   `npm`
-*   `node`
-*   `docker`
-*   `git`
-
-### Stage 3: Feature Inventory
-Scans the current project root for identifying markers:
-1.  **`pyproject.toml`**: Triggers full Python packaging logic.
-2.  **`requirements.txt`**: Triggers legacy pip dependency installation.
-3.  **`package.json`**: Triggers NPM installation.
-4.  **`Dockerfile`**: Enables containerization features.
+This repo also creates (if missing) subdirectories used by the GUI:
+* `state/`
+* `logs/`
+* `artifacts/`
 
 ---
 
-## ⚙️ Configuration Policies
+## 🖥 GUI Notes
 
-### PATH Management (Surgical Injection)
-The installer adds the project's bin directory to the host PATH using unique markers to ensure zero-risk uninstallation.
-
-**Example Injection Block:**
-```bash
-# Shesha Block START
-export PATH="/Users/user/project/.venv/bin:$PATH"
-# Shesha Block END
-```
-*The uninstall script specifically targets everything between these markers.*
-
-### IDE Injection Policy (Startup Detect)
-*   The injector supports startup client discovery (`--startup-detect`) and prompts before mutation.
-*   `claude` is always included in the common prompt set.
-*   If full Nexus-created binaries exist (`~/.mcp-tools/bin`), the injector prompts for each created component instead of blind bulk injection.
-
-### Permissions Hardening (Phase 9)
-The environment must support `chmod` (POSIX) or equivalent ACL modifications.
-*   **Logic**: During the installation phase, the `ensure_executable` method iterates through all entry points and shell scripts, setting the `0o111` (execute) bits.
-*   **Enforcement**: This applies to all internal Nexus tools and discovered user repository scripts.
+* Default local URL: `http://localhost:8501`
+* Logs are written to the suite’s active logs directory (central + writable).
+* GUI actions that spawn subprocesses should be recorded to the shared devlog when `--devlog` is enabled.
 
 ---
 
-## 🛡 Network & Proxy Requirements
-*   **Discovery**: Requires outbound access to `github.com` for bootstrapping sibling repos.
-*   **Installation**: Requires access to `pypi.org` and `registry.npmjs.org`.
-*   **Air-gap Mode**: If dependencies are pre-cached, the `--lite` mode can be used without active network connections.
+## ⚙️ Safety Rules (No Disk Scans)
+
+To reduce risk and surprise:
+* Tools do **not** crawl your filesystem or walk up directory trees to “find” workspaces.
+* Uninstall operations only touch **approved central locations** (e.g. `~/.mcp-tools`, `~/.mcpinv`, and the Nexus PATH block).
+* If you need to clean a git workspace, the tools print manual cleanup commands instead of deleting workspace files.
+
+---
+
+## 🧾 Devlogs (Shared Diagnostics)
+
+Shared JSONL devlogs live under:
+* `~/.mcpinv/devlogs/nexus-YYYY-MM-DD.jsonl`
+
+Behavior:
+* Entries are appended as actions run.
+* Old devlog files are pruned on use (90-day retention).
 
 ---
 
 ## 📝 Metadata
-*   **Status**: Production / Hardened (Phase 9)
-*   **Developer**: l00p3rl00p
-*   **Reference**: [ARCHITECTURE.md](./ARCHITECTURE.md) | [USER_OUTCOMES.md](./USER_OUTCOMES.md)
+* **Status**: Hardened
+* **Reference**: [ARCHITECTURE.md](./ARCHITECTURE.md) | [USER_OUTCOMES.md](./USER_OUTCOMES.md)
+

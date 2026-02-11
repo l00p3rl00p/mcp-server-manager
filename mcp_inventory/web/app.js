@@ -20,6 +20,8 @@ const state = {
     }
 };
 
+const TAB_DEFAULT = 'overview';
+
 // --- DOM Elements ---
 const els = {
     statusBadge: document.getElementById('system-status'),
@@ -27,13 +29,25 @@ const els = {
     inventoryTableBody: document.querySelector('#inventory-table tbody'),
     inventoryCount: document.getElementById('inventory-count'),
     logViewer: document.getElementById('log-viewer'),
+    librarianHealth: document.getElementById('librarian-health'),
     // Wizard components
     wizard: document.getElementById('action-wizard'),
     wizardLogs: document.getElementById('wizard-logs'),
     wizardStatus: document.getElementById('wizard-status'),
     wizardProgress: document.getElementById('wizard-progress'),
     wizardDoneBtn: document.getElementById('wizard-done-btn'),
-    wizardTitle: document.getElementById('wizard-title')
+    wizardTitle: document.getElementById('wizard-title'),
+    tabs: Array.from(document.querySelectorAll('.tabbar .tab')),
+    panels: Array.from(document.querySelectorAll('[data-tab-panel]')),
+    statusObserver: document.getElementById('status-observer'),
+    statusLibrarian: document.getElementById('status-librarian'),
+    statusInjector: document.getElementById('status-injector'),
+    statusActivator: document.getElementById('status-activator'),
+    proxyTransport: document.getElementById('proxy-transport'),
+    proxyUri: document.getElementById('proxy-uri'),
+    proxyConfig: document.getElementById('proxy-config'),
+    proxyCommand: document.getElementById('proxy-command'),
+    proxyStatus: document.getElementById('proxy-status'),
 };
 
 // --- Fetch Data ---
@@ -259,6 +273,166 @@ function renderNexusStatus() {
     updatePill('status-activator', state.system.activator);
 }
 
+function setActiveTab(tabId) {
+    const desired = tabId || TAB_DEFAULT;
+    els.tabs.forEach((btn) => {
+        const match = btn.dataset.tab === desired;
+        btn.classList.toggle('active', match);
+        btn.setAttribute('aria-selected', match ? 'true' : 'false');
+    });
+    els.panels.forEach((panel) => {
+        panel.hidden = panel.dataset.tabPanel !== desired;
+    });
+    try {
+        localStorage.setItem('mcpinv.activeTab', desired);
+    } catch {}
+    if (desired === 'librarian') {
+        renderLibrarianHealth();
+    }
+}
+
+function resolveInitialTab() {
+    const fromHash = (location.hash || '').replace(/^#/, '').trim();
+    if (fromHash) return fromHash;
+    try {
+        return localStorage.getItem('mcpinv.activeTab') || TAB_DEFAULT;
+    } catch {
+        return TAB_DEFAULT;
+    }
+}
+
+function renderLibrarianHealth() {
+    if (!els.librarianHealth) return;
+    const checks = state.health && Array.isArray(state.health.checks) ? state.health.checks : [];
+    const libChecks = checks.filter((c) => typeof c.name === 'string' && (c.name === 'librarian' || c.name.startsWith('lib:')));
+    if (libChecks.length === 0) {
+        els.librarianHealth.innerHTML = '<div class="sub-text">No librarian checks in the health snapshot yet. Run Health Check.</div>';
+        return;
+    }
+    els.librarianHealth.innerHTML = libChecks
+        .map((c) => {
+            const icon = c.status === 'ok' ? '✅' : c.status === 'error' ? '❌' : '⚠️';
+            return `<div class="log-entry"><span class="log-time">${icon}</span><span>${escapeHtml(c.name)}:</span> ${escapeHtml(c.message || '')}</div>`;
+        })
+        .join('');
+}
+
+function escapeHtml(text) {
+    return String(text || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+function renderProxyCommand() {
+    if (!els.proxyCommand) return;
+    const transport = (els.proxyTransport && els.proxyTransport.value) ? els.proxyTransport.value : 'sse';
+    const cfg = (els.proxyConfig && els.proxyConfig.value) ? els.proxyConfig.value : './config.json';
+    const cmd = `<your-mcp-proxy> --config "${cfg}" --outputTransport ${transport}`;
+    els.proxyCommand.textContent = cmd;
+}
+
+// Make available for inline onclick handlers
+window.renderProxyCommand = renderProxyCommand;
+
+function setProxyStatus(kind, message) {
+    if (!els.proxyStatus) return;
+    const cls = kind === 'ok' ? 'status-ok' : kind === 'error' ? 'status-error' : 'status-warn';
+    els.proxyStatus.className = `status-badge ${cls}`;
+    els.proxyStatus.textContent = message;
+}
+
+function defaultUriForTransport(t) {
+    if (t === 'ws') return 'ws://localhost:3006/message';
+    if (t === 'streamableHttp') return 'http://localhost:3006/mcp';
+    return 'http://localhost:3006/sse';
+}
+
+async function testProxyConnection() {
+    const transport = (els.proxyTransport && els.proxyTransport.value) ? els.proxyTransport.value : 'sse';
+    const uri = (els.proxyUri && els.proxyUri.value) ? els.proxyUri.value.trim() : '';
+    const target = uri || defaultUriForTransport(transport);
+    setProxyStatus('warn', `Testing ${transport} @ ${target} ...`);
+
+    const started = Date.now();
+    try {
+        if (transport === 'ws') {
+            await new Promise((resolve, reject) => {
+                let done = false;
+                const ws = new WebSocket(target);
+                const timer = setTimeout(() => {
+                    if (done) return;
+                    done = true;
+                    try { ws.close(); } catch {}
+                    reject(new Error('timeout'));
+                }, 3000);
+                ws.onopen = () => {
+                    if (done) return;
+                    done = true;
+                    clearTimeout(timer);
+                    try { ws.close(); } catch {}
+                    resolve(true);
+                };
+                ws.onerror = () => {
+                    if (done) return;
+                    done = true;
+                    clearTimeout(timer);
+                    reject(new Error('ws error'));
+                };
+            });
+            setProxyStatus('ok', `Connection: reachable (ws) in ${Date.now() - started}ms`);
+            return;
+        }
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3000);
+        try {
+            const res = await fetch(target, {
+                method: 'GET',
+                headers: transport === 'sse' ? { 'Accept': 'text/event-stream' } : {},
+                signal: controller.signal
+            });
+            clearTimeout(timer);
+            setProxyStatus('ok', `Connection: reachable (${res.status}) in ${Date.now() - started}ms`);
+        } catch (e) {
+            clearTimeout(timer);
+            throw e;
+        }
+    } catch (e) {
+        const msg = (e && e.name === 'AbortError') ? 'timeout' : (e && e.message) ? e.message : String(e);
+        setProxyStatus('error', `Connection: failed (${msg})`);
+    }
+}
+
+window.testProxyConnection = testProxyConnection;
+
+function wireTabs() {
+    els.tabs.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            location.hash = `#${tab}`;
+            setActiveTab(tab);
+        });
+    });
+    window.addEventListener('hashchange', () => setActiveTab(resolveInitialTab()));
+    setActiveTab(resolveInitialTab());
+}
+
+function wireStatusShortcuts() {
+    if (els.statusObserver) els.statusObserver.addEventListener('click', () => { location.hash = '#overview'; setActiveTab('overview'); });
+    if (els.statusLibrarian) els.statusLibrarian.addEventListener('click', () => { location.hash = '#librarian'; setActiveTab('librarian'); });
+    if (els.statusInjector) els.statusInjector.addEventListener('click', () => { location.hash = '#overview'; setActiveTab('overview'); });
+    if (els.statusActivator) els.statusActivator.addEventListener('click', () => { location.hash = '#overview'; setActiveTab('overview'); });
+}
+
+async function fetchAll() {
+    await Promise.all([fetchHealth(), fetchInventory(), fetchLogs(), fetchSystemStatus()]);
+}
+
+// Tab + UX wiring is initialized on DOMContentLoaded (see bottom of file).
+
 function renderHealth() {
     els.healthMetrics.innerHTML = '';
     if (!state.health || !state.health.checks) return;
@@ -393,6 +567,51 @@ async function fetchAll() {
 
 // Initial load
 document.addEventListener('DOMContentLoaded', () => {
+    wireTabs();
+    wireStatusShortcuts();
+
+    // Proxy UX: restore persisted settings
+    try {
+        const t = localStorage.getItem('mcpinv.proxy.transport');
+        const u = localStorage.getItem('mcpinv.proxy.uri');
+        const c = localStorage.getItem('mcpinv.proxy.config');
+        if (els.proxyTransport && t) els.proxyTransport.value = t;
+        if (els.proxyConfig && c) els.proxyConfig.value = c;
+        if (els.proxyUri) {
+            els.proxyUri.value = u || defaultUriForTransport((els.proxyTransport && els.proxyTransport.value) ? els.proxyTransport.value : 'sse');
+        }
+    } catch {}
+
+    if (els.proxyTransport && els.proxyUri) {
+        els.proxyTransport.dataset.prev = els.proxyTransport.value || 'sse';
+        els.proxyTransport.addEventListener('change', () => {
+            const next = els.proxyTransport.value;
+            // If user is on the old default, update to the new default.
+            const current = (els.proxyUri.value || '').trim();
+            const prev = els.proxyTransport.dataset.prev || 'sse';
+            const wasDefault = !current || current === defaultUriForTransport(prev);
+            if (!current || wasDefault) {
+                els.proxyUri.value = defaultUriForTransport(next);
+            }
+            els.proxyTransport.dataset.prev = next;
+            try { localStorage.setItem('mcpinv.proxy.transport', next); } catch {}
+            renderProxyCommand();
+        });
+    }
+    if (els.proxyUri) {
+        els.proxyUri.addEventListener('change', () => {
+            try { localStorage.setItem('mcpinv.proxy.uri', els.proxyUri.value.trim()); } catch {}
+        });
+    }
+    if (els.proxyConfig) {
+        els.proxyConfig.addEventListener('change', () => {
+            try { localStorage.setItem('mcpinv.proxy.config', els.proxyConfig.value.trim()); } catch {}
+            renderProxyCommand();
+        });
+    }
+
+    renderProxyCommand();
+    setProxyStatus('warn', 'Connection: unknown');
     fetchAll();
 
     // Poll logs every 5s

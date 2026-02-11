@@ -14,83 +14,144 @@
             <div class="logo">Workforce Nexus</div>
             <div id="system-status" class="status-badge status-ok" style="display:none;"></div>
             <div id="nexus-status-bar" class="nexus-status-bar">
-                <span id="status-observer" class="status-pill status-gray" title="Observer">👁️ Observer</span>
-                <span id="status-librarian" class="status-pill status-gray" title="Librarian">📚 Librarian</span>
-                <span id="status-injector" class="status-pill status-gray" title="Injector">💉 Injector</span>
-                <span id="status-activator" class="status-pill status-gray" title="Activator">🚀 Activator</span>
+                <button id="status-observer" class="status-pill status-gray" type="button" title="Observer">👁️ Observer</button>
+                <button id="status-librarian" class="status-pill status-gray" type="button" title="Librarian">📚 Librarian</button>
+                <button id="status-injector" class="status-pill status-gray" type="button" title="Injector">💉 Injector</button>
+                <button id="status-activator" class="status-pill status-gray" type="button" title="Activator">🚀 Activator</button>
             </div>
         </header>
 
-        <main class="dashboard-grid">
-            <!-- Health Section -->
-            <section class="card health-card">
-                <div class="card-header">
-                    <h2>System Health</h2>
-                    <button class="btn-icon" onclick="runHealthCheck()" title="Run Health Check">🔄</button>
-                </div>
-                <div id="health-metrics" class="metrics-grid">
-                    <!-- Populated by JS -->
-                    <div class="loading">Loading health data...</div>
-                </div>
+        <nav class="tabbar" aria-label="Dashboard Tabs">
+            <button class="tab" type="button" data-tab="overview">Overview</button>
+            <button class="tab" type="button" data-tab="inventory">Inventory</button>
+            <button class="tab" type="button" data-tab="activity">Activity</button>
+            <button class="tab" type="button" data-tab="librarian">Librarian</button>
+            <button class="tab" type="button" data-tab="proxy">Proxy</button>
+        </nav>
+
+        <main class="tabs">
+            <section id="tab-overview" class="tab-panel dashboard-grid" data-tab-panel="overview">
+                <!-- Health Section -->
+                <section class="card health-card">
+                    <div class="card-header">
+                        <h2>System Health</h2>
+                        <button class="btn-icon" onclick="runHealthCheck()" title="Run Health Check">🔄</button>
+                    </div>
+                    <div id="health-metrics" class="metrics-grid">
+                        <div class="loading">Loading health data...</div>
+                    </div>
+                </section>
+
+                <!-- Actions / Quick Commands -->
+                <section class="card actions-card">
+                    <div class="card-header">
+                        <h2>Quick Actions</h2>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn primary" onclick="triggerAction('scan')">Full Scan</button>
+                        <button class="btn primary" onclick="triggerAction('attach')">Attach to IDEs</button>
+                        <button class="btn secondary" onclick="triggerAction('running')">Check Running</button>
+                    </div>
+                </section>
+
+                <!-- Maintenance / System Tools -->
+                <section class="card maintenance-card">
+                    <div class="card-header">
+                        <h2>Maintenance</h2>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn secondary" onclick="triggerAction('terminal')">Open Terminal</button>
+                        <button class="btn secondary" onclick="triggerAction('update')">Update Tools</button>
+                    </div>
+                </section>
             </section>
 
-            <!-- Actions / Quick Commands -->
-            <section class="card actions-card">
-                <div class="card-header">
-                    <h2>Quick Actions</h2>
-                </div>
-                <div class="action-buttons">
-                    <button class="btn primary" onclick="triggerAction('scan')">Full Scan</button>
-                    <button class="btn primary" onclick="triggerAction('attach')">Attach to IDEs</button>
-                    <button class="btn secondary" onclick="triggerAction('running')">Check Running</button>
-                </div>
+            <section id="tab-inventory" class="tab-panel" data-tab-panel="inventory" hidden>
+                <section class="card inventory-card">
+                    <div class="card-header">
+                        <h2>Inventory</h2>
+                        <span id="inventory-count" class="badge">0</span>
+                    </div>
+                    <div class="table-container">
+                        <table id="inventory-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Status</th>
+                                    <th>Confidence</th>
+                                    <th>Transport</th>
+                                    <th>Path</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </section>
             </section>
 
-            <!-- Maintenance / System Tools -->
-            <section class="card maintenance-card">
-                <div class="card-header">
-                    <h2>Maintenance</h2>
-                </div>
-                <div class="action-buttons">
-                    <button class="btn secondary" onclick="triggerAction('terminal')">Open Terminal</button>
-                    <button class="btn secondary" onclick="triggerAction('update')">Update Tools</button>
-                </div>
+            <section id="tab-activity" class="tab-panel" data-tab-panel="activity" hidden>
+                <section class="card logs-card">
+                    <div class="card-header">
+                        <h2>Recent Activity</h2>
+                        <button class="btn-sm" onclick="fetchLogs()">Refresh</button>
+                    </div>
+                    <div id="log-viewer" class="log-viewer"></div>
+                </section>
             </section>
 
-            <!-- Inventory Section -->
-            <section class="card inventory-card full-width">
-                <div class="card-header">
-                    <h2>Inventory</h2>
-                    <span id="inventory-count" class="badge">0</span>
-                </div>
-                <div class="table-container">
-                    <table id="inventory-table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Status</th>
-                                <th>Confidence</th>
-                                <th>Transport</th>
-                                <th>Path</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Populated by JS -->
-                        </tbody>
-                    </table>
-                </div>
+            <section id="tab-librarian" class="tab-panel" data-tab-panel="librarian" hidden>
+                <section class="card">
+                    <div class="card-header">
+                        <h2>Librarian</h2>
+                        <button class="btn-sm" onclick="runHealthCheck()">Refresh</button>
+                    </div>
+                    <div class="sub-text">Shows checks prefixed with <code>lib:</code> from the health snapshot.</div>
+                    <div id="librarian-health" class="log-viewer"></div>
+                </section>
             </section>
 
-            <!-- Logs / Execution Section -->
-            <section class="card logs-card full-width">
-                <div class="card-header">
-                    <h2>Recent Activity</h2>
-                    <button class="btn-sm" onclick="fetchLogs()">Refresh</button>
-                </div>
-                <div id="log-viewer" class="log-viewer">
-                    <!-- Populated by JS -->
-                </div>
+            <section id="tab-proxy" class="tab-panel" data-tab-panel="proxy" hidden>
+                <section class="card">
+                    <div class="card-header">
+                        <h2>Web Client Proxy (Best Practice)</h2>
+                        <button class="btn-sm" onclick="triggerAction('terminal')">Open Terminal</button>
+                    </div>
+                    <div class="sub-text">
+                        For browser clients (ChatGPT, Perplexity, Gemini, AI Studio), use a local proxy that exposes SSE / Streamable HTTP / WS endpoints.
+                    </div>
+                    <div class="proxy-grid">
+                        <div>
+                            <label class="field-label" for="proxy-transport">Transport</label>
+                            <select id="proxy-transport" class="field">
+                                <option value="sse">SSE</option>
+                                <option value="streamableHttp">Streamable HTTP</option>
+                                <option value="ws">WebSocket</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label" for="proxy-uri">Server URI</label>
+                            <input id="proxy-uri" class="field" type="text" value="http://localhost:3006/sse" />
+                        </div>
+                        <div>
+                            <label class="field-label" for="proxy-config">Config Path</label>
+                            <input id="proxy-config" class="field" type="text" value="~/Library/Application Support/Claude/claude_desktop_config.json" />
+                        </div>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn primary" onclick="renderProxyCommand()">Generate Command</button>
+                        <button class="btn secondary" onclick="testProxyConnection()">Test Connection</button>
+                    </div>
+                    <div id="proxy-status" class="status-badge status-warn" style="margin-top: 12px;">Connection: unknown</div>
+                    <div class="sub-text">Command:</div>
+                    <pre id="proxy-command" class="wizard-log-window"></pre>
+                    <div class="sub-text">Default endpoints:</div>
+                    <ul class="sub-text">
+                        <li>SSE: <code>http://localhost:3006/sse</code></li>
+                        <li>Streamable HTTP: <code>http://localhost:3006/mcp</code></li>
+                        <li>WebSocket: <code>ws://localhost:3006/message</code></li>
+                    </ul>
+                </section>
             </section>
         </main>
     </div>

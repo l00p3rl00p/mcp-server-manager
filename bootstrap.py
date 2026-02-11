@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 from nexus_devlog import prune_devlogs, devlog_path, log_event, run_capture
 
@@ -60,7 +61,7 @@ def _maybe_fetch_activator_to_central() -> bool:
         print(f"❌ Failed to fetch Activator: {e}")
         return False
 
-def _clone_repo(name: str, target: Path, *, devlog: Path | None) -> bool:
+def _clone_repo(name: str, target: Path, *, devlog: Optional[Path]) -> bool:
     url = NEXUS_REPOS.get(name)
     if not url:
         return False
@@ -75,7 +76,7 @@ def _clone_repo(name: str, target: Path, *, devlog: Path | None) -> bool:
         log_event(devlog, "clone_failed", {"repo": name, "target": str(target), "error": str(e)})
         return False
 
-def _install_suite_to_central(*, devlog: Path | None) -> bool:
+def _install_suite_to_central(*, devlog: Optional[Path]) -> bool:
     if not sys.stdin.isatty():
         return False
     if not _git_available():

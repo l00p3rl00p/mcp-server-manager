@@ -55,7 +55,7 @@ To fully align with these outcomes, the following enhancements are planned:
 
 ### 2026-02-11 Alignment Update
 * **Injector Startup Detect**: Added startup detection/prompt flow for common IDE clients, including `claude`, `codex`, and `aistudio` (plus `google-antigravity` alias).
-* **Package-Created Component Injection Policy**: If full Nexus components are detected (`~/.mcp-tools/bin`), the injector now prompts injection per component (`nexus-activator`, `nexus-observer`, `nexus-surgeon`, `nexus-librarian`).
+* **Package-Created Component Injection Policy**: If full Nexus components are detected (`~/.mcp-tools/bin`), the injector prompts injection only for components that are **actual MCP servers over stdio** (currently `nexus-librarian`). Other Nexus binaries (e.g. `mcp-activator`, `mcp-observer`) are CLIs and should not be injected into MCP clients.
 * **Tier-Aware GUI Control Surface**: GUI command widgets now map to command catalog behavior with visual unchecked state for unsupported tier actions.
 * **Central-Only Uninstall Policy**: Full wipes only touch approved central locations (e.g. `~/.mcp-tools`, `~/.mcpinv`, and the Nexus PATH block). No disk scans or directory-tree climbing during uninstall.
 * **Uninstall Safety + Diagnostics**: Uninstall now prints an explicit deletion plan and requires confirmation (unless `--yes`). Added `--verbose` and `--devlog` (JSONL) with 90-day retention for diagnostics.
