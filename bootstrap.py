@@ -101,6 +101,24 @@ def main() -> int:
         devlog = devlog_path()
         log_event(devlog, "bootstrap_forwarder_start", {"argv": sys.argv})
 
+    # Always show forwarder help directly (even if Activator exists), so users can discover forwarder-only flags.
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print("Nexus Bootstrap Forwarder (Observer)")
+        print()
+        print("This is a safe forwarder. It will not scan your disk or walk up directories.")
+        print("It forwards to the Activator (repo-mcp-packager/bootstrap.py) when available.")
+        print()
+        print("Common forwarded flags:")
+        print("  --permanent / --industrial   Hardened install into ~/.mcp-tools")
+        print("  --lite                       Lite install")
+        print("  --sync / --update            Sync/update suite")
+        print("  --gui                        Launch GUI after install")
+        print()
+        print("Forwarder-only flags:")
+        print("  --install-suite              Clone missing Nexus repos into ~/.mcp-tools (no scanning)")
+        print("  --devlog                     Write JSONL devlog (90-day retention)")
+        return 0
+
     if "--install-suite" in sys.argv:
         sys.argv = [a for a in sys.argv if a != "--install-suite"]
         if not _git_available():
@@ -135,23 +153,6 @@ def main() -> int:
                     sys.stderr.write(cp.stderr)
                 return cp.returncode
             return subprocess.run(cmd, check=False).returncode
-
-    if "--help" in sys.argv or "-h" in sys.argv:
-        print("Nexus Bootstrap Forwarder (Observer)")
-        print()
-        print("This is a safe forwarder. It will not scan your disk or walk up directories.")
-        print("It forwards to the Activator (repo-mcp-packager/bootstrap.py) when available.")
-        print()
-        print("Common forwarded flags:")
-        print("  --permanent / --industrial   Hardened install into ~/.mcp-tools")
-        print("  --lite                       Lite install")
-        print("  --sync / --update            Sync/update suite")
-        print("  --gui                        Launch GUI after install")
-        print()
-        print("Forwarder-only flags:")
-        print("  --install-suite              Clone missing Nexus repos into ~/.mcp-tools (no scanning)")
-        print("  --devlog                     Write JSONL devlog (90-day retention)")
-        return 0
 
     print("❌ Activator bootstrap.py not found.")
     print("This repo's bootstrap is a forwarder and will not scan your disk.")
