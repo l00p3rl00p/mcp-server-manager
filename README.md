@@ -145,12 +145,22 @@ The **Observer GUI** is your primary interface for monitoring the health and con
 ## 🌍 Global Path & Workspace Context
 
 ### 1. Setting the PATH
-For the `mcp-` commands to work from any directory, ensure your shell configuration (`~/.zshrc` or `~/.bashrc`) includes the Nexus bin directory:
+By default, Industrial installs place **short-command wrappers** in `~/.local/bin` (a common user-owned location).
+
+If `~/.local/bin` is on your PATH, the `mcp-` commands will work from any directory.
+
+If it is not on your PATH, add it:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Optional (opt-in): you can also add the Nexus central bin directory to PATH (edits `~/.zshrc`/`~/.bashrc` only when explicitly requested via `--add-to-path`):
 
 ```bash
 export PATH="$HOME/.mcp-tools/bin:$PATH"
 ```
-*(The Industrial/Standard bootstrap attempts to automate this step during installation.)*
+*(Recommended only if you specifically want `~/.mcp-tools/bin` on PATH.)*
 
 ### 2. Execution Directory
 *   **Installation/Sync:** Always run `bootstrap.py` from the `repo-mcp-packager` root.

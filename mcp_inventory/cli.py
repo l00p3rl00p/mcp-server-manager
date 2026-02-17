@@ -267,7 +267,19 @@ def main() -> None:
     # Setup unified logging (verbose=False by default for console, but file logs are DEBUG)
     setup_logging()
     
-    p = argparse.ArgumentParser(prog="mcpinv", description="Local MCP discovery + curated inventory.")
+    p = argparse.ArgumentParser(
+        prog="mcpinv",
+        description="Local MCP discovery + curated inventory.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Commands (what they do):\n"
+            "  mcp-observer gui                Launch the local dashboard\n"
+            "  mcp-observer scan .             Scan for MCP candidates (confirmed-only auto-add)\n"
+            "  mcp-observer list               List inventory entries\n"
+            "  mcp-observer running            Show runtime observations (docker + mcp-ish processes)\n"
+            "  mcp-observer health             Run diagnostics and save a snapshot\n"
+        ),
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     pcfg = sub.add_parser("config", help="Show/update config.")

@@ -75,7 +75,14 @@ Scope note: to avoid documentation drift, this table lists **only commands/flags
 *   **Restarting**: Just rerun the command. It will automatically re-index your active servers.
 
 ### 3. PATH Setup
-If `mcp-` commands are not found, add this to your `~/.zshrc` (macOS) or `~/.bashrc`:
+By default, Industrial installs place short-command wrappers in `~/.local/bin`.
+
+If `mcp-` commands are not found, first add this to your `~/.zshrc` (macOS) or `~/.bashrc`:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Optional (opt-in): you can also add the Nexus central bin directory:
 ```bash
 export PATH="$HOME/.mcp-tools/bin:$PATH"
 ```

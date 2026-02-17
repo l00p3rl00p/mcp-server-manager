@@ -73,10 +73,15 @@ Simply run the launch command again. The Observer will automatically re-scan the
 *   **`mcp-observer` / `mcp-surgeon` / `mcp-librarian`**: These are shell-aware and can be run from **anywhere** in your terminal.
 
 ### PATH Configuration
-The Nexus requires `~/.mcp-tools/bin` to be in your system PATH. If the installer failed to add it automatically, add the following to your `~/.zshrc` or `~/.bashrc`:
+By default, Industrial installs place short-command wrappers in `~/.local/bin`. If `mcp-` commands are not found, add this to your `~/.zshrc` or `~/.bashrc`:
 
 ```bash
-# Workforce Nexus Path
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Optional (opt-in): you can also add the Nexus central bin directory (`~/.mcp-tools/bin`) to PATH:
+
+```bash
 export PATH="$HOME/.mcp-tools/bin:$PATH"
 ```
 
