@@ -62,7 +62,21 @@ Shared JSONL devlogs live under:
 
 Behavior:
 * Entries are appended as actions run.
+
 * Old devlog files are pruned on use (90-day retention).
+
+---
+
+## 🛡️ Shell Safety (Execution Rules)
+
+All agents operating in this environment must adhere to the **ATP Safe List**:
+
+1.  **Allowed Tools**: `ls`, `grep`, `cat`, etc. are standard usage.
+2.  **Default State**: Shell must operate with `set -o noclobber` ENABLED.
+3.  **Forbidden Action**: The use of `>|` (force clobber) is strictly prohibited.
+
+
+
 
 ---
 

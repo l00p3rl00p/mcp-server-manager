@@ -43,6 +43,12 @@ As a user, I want:
 * **Safe Upgrades**: The `mcp-activator --sync` command provides a unified update loop, ensuring all central tools stay synchronized with the latest security and feature patches.
 * **Context-Locked Execution**: Entry points carry their own venv and PYTHONPATH, ensuring they work regardless of the user's active terminal environment.
 
+### 6. Best-in-Class Tokenization & Efficiency (ATP)
+* **Code over Tools**: Agents should prefer writing code (filtering, mapping, reducing) over multiple sequential tool calls.
+* **On-Demand Discovery**: Implement `searchApi` logic to avoid context bloat from pre-loading large tool catalogs.
+* **Parallel Execution**: Leverage `Promise.all` patterns for concurrent API and LLM sub-agent calls to reduce wall-clock time.
+* **Aggregated Context**: Only return necessary, processed data to the main LLM context, keeping raw high-volume data isolated in the execution environment.
+
 ---
 
 ## 🚀 Roadmap to 100% Compliance
@@ -76,3 +82,7 @@ To fully align with these outcomes, the following enhancements are planned:
 * **No Sudo**: Reject any feature that requires global `sudo` permissions if a local `.venv` alternative exists.
 * **No Unmanaged Overwrites**: Reject any "auto-update" feature that replaces local configuration without a manifest-backed snapshot.
 * **Respect Local Code**: Treatment of the current repository state as the "source of truth." Never overwrite local changes with upstream templates.
+* **Token Stewardship**: Prioritize "Zero-Token Data Processing" (client-side filtering) to minimize LLM round-trips and context saturation. (DELIVERED)
+* **Isolation of Concerns**: Execution logic should run in an isolated environment, keeping host system secrets (SSH keys, unrelated tokens) protected from untrusted code. (DELIVERED)
+* **Cost Transparency**: Users must see the "Token Weight" of every interaction to make informed decisions. (DELIVERED)
+* **ATP Compliance**: Shell operations must default to `noclobber` to prevent accidental data loss. (DELIVERED)

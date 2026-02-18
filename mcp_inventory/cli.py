@@ -52,6 +52,9 @@ def cmd_config(args: argparse.Namespace) -> int:
 
 def cmd_inventory_list(args: argparse.Namespace) -> int:
     inv = load_inventory()
+    if args.json:
+        print(json.dumps({pid: e.__dict__ for pid, e in inv.items()}, default=str))
+        return 0
     if not inv:
         print("(empty)")
         return 0
@@ -155,6 +158,10 @@ def cmd_running(args: argparse.Namespace) -> int:
     # Persist state snapshot for GUI
     write_runtime_snapshot(snap)
     
+    if args.json:
+        print(json.dumps([o.__dict__ for o in snap], default=str))
+        return 0
+        
     if not snap:
         print("(no running observations found)")
         return 0
@@ -286,6 +293,7 @@ def main() -> None:
             "  mcp-observer health             Run diagnostics and save a snapshot\n"
         ),
     )
+    p.add_argument('--json', action='store_true', help="Output in raw JSON format for agent-side processing")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     pcfg = sub.add_parser("config", help="Show/update config.")

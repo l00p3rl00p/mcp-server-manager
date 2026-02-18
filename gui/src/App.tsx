@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import Sparkline from './components/Sparkline';
 import {
   Activity, ShieldCheck, Settings,
   LayoutDashboard, Search, Cpu, Monitor,
@@ -17,6 +18,11 @@ interface LogEntry {
   metadata?: {
     raw_result?: string;
     error?: string;
+    tokens?: {
+      input: number;
+      output: number;
+      total: number;
+    };
   };
 }
 
@@ -31,7 +37,8 @@ const App: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [systemStatus, setSystemStatus] = useState<any>({
-    metrics: { cpu: 0, memory: 0, disk: 0, net: { sent: 0, recv: 0 } },
+    metrics: { cpu: 0, memory: 0, disk: 0, net: { sent: 0, recv: 0 }, ram_used: 0, ram_total: 0, disk_used: 0, disk_total: 0 },
+    history: [] as any[],
     pulse: 'green',
     servers: [],
     posture: 'Initializing...'
@@ -232,10 +239,34 @@ const App: React.FC = () => {
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-              <div className="glass-card metrics-card"><Cpu size={24} color="var(--primary)" /><span style={{ fontSize: '26px', fontWeight: 700 }}>{systemStatus?.metrics?.cpu ?? 0}%</span><p style={{ color: 'var(--text-dim)', fontSize: '12px' }}>CPU Usage</p></div>
-              <div className="glass-card metrics-card"><Monitor size={24} color="var(--success)" /><span style={{ fontSize: '26px', fontWeight: 700 }}>{systemStatus?.metrics?.memory ?? 0}%</span><p style={{ color: 'var(--text-dim)', fontSize: '12px' }}>RAM Allocation</p></div>
-              <div className="glass-card metrics-card"><HardDrive size={24} color="#a855f7" /><span style={{ fontSize: '26px', fontWeight: 700 }}>{systemStatus?.metrics?.disk ?? 0}%</span><p style={{ color: 'var(--text-dim)', fontSize: '12px' }}>Disk Saturation</p></div>
-              <div className="glass-card metrics-card" style={{ position: 'relative' }}><Globe size={24} color="#3b82f6" /><span style={{ fontSize: '26px', fontWeight: 700 }}>{systemStatus?.pulse === 'green' ? 'Stable' : 'Unstable'}</span><p style={{ color: 'var(--text-dim)', fontSize: '12px' }}>Fleet Health</p></div>
+              <div className="glass-card metrics-card">
+                <Cpu size={24} color="var(--primary)" />
+                <span style={{ fontSize: '26px', fontWeight: 700 }}>{systemStatus?.metrics?.cpu ?? 0}%</span>
+                <p style={{ color: 'var(--text-dim)', fontSize: '12px', display: 'flex', justifyContent: 'space-between' }}>CPU Usage <Sparkline data={(systemStatus?.history || []).map((h: any) => h.cpu)} color="var(--primary)" width={60} height={20} /></p>
+              </div>
+              <div className="glass-card metrics-card">
+                <Monitor size={24} color="var(--success)" />
+                <span style={{ fontSize: '26px', fontWeight: 700 }}>
+                  {((systemStatus?.metrics?.ram_used ?? 0) / 1024 / 1024 / 1024).toFixed(1)} GB
+                </span>
+                <p style={{ color: 'var(--text-dim)', fontSize: '12px' }}>
+                  / {((systemStatus?.metrics?.ram_total ?? 0) / 1024 / 1024 / 1024).toFixed(1)} GB RAM
+                </p>
+              </div>
+              <div className="glass-card metrics-card">
+                <HardDrive size={24} color="#a855f7" />
+                <span style={{ fontSize: '26px', fontWeight: 700 }}>
+                  {((systemStatus?.metrics?.disk_used ?? 0) / 1024 / 1024 / 1024).toFixed(0)} GB
+                </span>
+                <p style={{ color: 'var(--text-dim)', fontSize: '12px' }}>
+                  / {((systemStatus?.metrics?.disk_total ?? 0) / 1024 / 1024 / 1024).toFixed(0)} GB Used
+                </p>
+              </div>
+              <div className="glass-card metrics-card" style={{ position: 'relative' }}>
+                <Globe size={24} color="#3b82f6" />
+                <span style={{ fontSize: '26px', fontWeight: 700 }}>{systemStatus?.pulse === 'green' ? 'Stable' : 'Unstable'}</span>
+                <p style={{ color: 'var(--text-dim)', fontSize: '12px' }}>Fleet Health</p>
+              </div>
             </div>
 
             <section className="glass-card">
@@ -251,7 +282,16 @@ const App: React.FC = () => {
                         <b style={{ fontSize: '16px' }}>{s.name}</b>
                         <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '4px' }}>TYPE: {(s.type || 'server').toUpperCase()}</div>
                       </div>
-                      <span className={`badge ${s.status === 'online' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10px' }}>{s.status}</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                        <span className={`badge ${s.status === 'online' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10px' }}>{s.status}</span>
+                        {s.metrics?.pid && (
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <span className="badge badge-dim" style={{ fontSize: '9px' }}>PID: {s.metrics.pid}</span>
+                            <span className="badge badge-dim" style={{ fontSize: '9px' }}>CPU: {s.metrics.cpu?.toFixed(1) ?? 0}%</span>
+                            <span className="badge badge-dim" style={{ fontSize: '9px' }}>RAM: {(s.metrics.ram / 1024 / 1024).toFixed(0)}MB</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div style={{ marginTop: '20px', display: 'flex', gap: '8px' }}>
                       <button className={`nav-item ${s.status === 'online' ? 'badge-danger' : 'badge-success'}`} style={{ flex: 1, justifyContent: 'center', fontSize: '12px' }} onClick={() => handleControl(s.id, s.status === 'online' ? 'stop' : 'start')}>
@@ -394,6 +434,17 @@ const App: React.FC = () => {
                       <pre style={{ background: 'rgba(0,0,0,0.4)', padding: '16px', fontSize: '12px', borderRadius: '8px', overflowX: 'auto', whiteSpace: 'pre-wrap', fontFamily: 'monospace', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
                         {log.metadata.raw_result}
                       </pre>
+                    </div>
+                  )}
+                  {log.metadata?.tokens && log.metadata.tokens.total > 0 && (
+                    <div className="badge" style={{
+                      fontSize: '9px',
+                      marginLeft: 'auto',
+                      marginRight: '16px',
+                      color: log.metadata.tokens.total > 10000 ? '#ef4444' : log.metadata.tokens.total > 1000 ? '#eab308' : '#10b981',
+                      border: `1px solid ${log.metadata.tokens.total > 10000 ? 'rgba(239,68,68,0.3)' : log.metadata.tokens.total > 1000 ? 'rgba(234,179,8,0.3)' : 'rgba(16,185,129,0.3)'}`
+                    }}>
+                      {log.metadata.tokens.total} T
                     </div>
                   )}
                   {log.suggestion && <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginLeft: '197px', marginTop: '4px' }}>↳ {log.suggestion}</div>}

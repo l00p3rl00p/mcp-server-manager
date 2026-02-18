@@ -7,6 +7,10 @@ import shlex
 import datetime
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from collections import deque
+import time
+
+METRIC_HISTORY = deque(maxlen=60)
 from pathlib import Path
 
 app = Flask(__name__)
@@ -116,15 +120,19 @@ def get_status():
     import yaml
     
     servers = []
-    procs = list(psutil.process_iter(['name', 'cmdline']))
+    # Capture PID, Name, Cmdline
+    procs = list(psutil.process_iter(['name', 'cmdline', 'pid']))
     
-    def is_running(patterns):
+    def find_process(patterns):
         for p in procs:
-            cmdline = ' '.join(p.info['cmdline'] or [])
-            if any(pat in cmdline for pat in patterns): return True
-        return False
+            try:
+                cmdline = ' '.join(p.info['cmdline'] or [])
+                if any(pat in cmdline for pat in patterns): return p
+            except: pass
+        return None
 
-    librarian_online = is_running(["mcp.py", "nexus-librarian"])
+    librarian_proc = find_process(["mcp.py", "nexus-librarian"])
+    librarian_online = librarian_proc is not None
     core_keywords = ["mcp-injector", "mcp-server-manager", "repo-mcp-packager", "nexus-librarian"]
 
     if pm.inventory_path.exists():
@@ -136,28 +144,53 @@ def get_status():
                     run_config = s_data.get("run", {})
                     start_cmd = run_config.get("start_cmd", "")
                     
-                    online = False
-                    if "mcp.py" in start_cmd or "librarian" in s_id: online = librarian_online
-                    elif "gui_bridge.py" in start_cmd: online = True
+                    proc = None
+                    if "mcp.py" in start_cmd or "librarian" in s_id: proc = librarian_proc
+                    elif "gui_bridge.py" in start_cmd:
+                        # Self-identification
+                        proc = psutil.Process(os.getpid())
                     elif start_cmd:
                         parts = [p for p in start_cmd.split() if len(p) > 3 and not p.startswith('-')]
-                        online = is_running(parts)
+                        proc = find_process(parts)
+
+                    online = proc is not None
+                    
+                    # Detailed Metrics
+                    stats = {"cpu": 0, "ram": 0, "pid": None}
+                    if online:
+                        try:
+                            # Use oneshot to avoid race conditions
+                            with proc.oneshot():
+                                stats["cpu"] = proc.cpu_percent(interval=None)
+                                stats["ram"] = proc.memory_info().rss  # Bytes
+                                stats["pid"] = proc.pid
+                        except: pass
 
                     is_core = any(k in s_id for k in core_keywords)
                     servers.append({
                         "id": s_id, "name": s_data.get("name", s_id),
                         "status": "online" if online else "stopped",
                         "type": "core" if is_core else run_config.get("kind", "generic"),
+                        "metrics": stats,
                         "raw": s_data
                     })
         except: pass
 
-    metrics = {
+    # Global Metrics
+    d = psutil.disk_usage('/')
+    current_metrics = {
         "cpu": psutil.cpu_percent(interval=None),
         "memory": psutil.virtual_memory().percent,
-        "ram": psutil.virtual_memory().percent, # compatibility
-        "disk": psutil.disk_usage('/').percent
+        "ram_total": psutil.virtual_memory().total,
+        "ram_used": psutil.virtual_memory().used,
+        "disk": d.percent,
+        "disk_total": d.total,
+        "disk_used": d.used,
+        "disk_free": d.free,
+        "ts": time.time()
     }
+    
+    METRIC_HISTORY.append(current_metrics)
 
     resource_count = 0
     db_path = pm.app_data_dir / "knowledge.db"
@@ -184,7 +217,7 @@ def get_status():
 
     if missing_cores:
         pulse = "red"; posture = f"Degraded: Missing {', '.join(missing_cores)}"
-    elif metrics["cpu"] > 80:
+    elif current_metrics["cpu"] > 80:
         pulse = "yellow"; posture = "Resource Pressure"
     else:
         pulse = "green"; posture = "Optimal"
@@ -195,7 +228,8 @@ def get_status():
         "version_status": version_status,
         "posture": posture,
         "pulse": pulse,
-        "metrics": metrics,
+        "metrics": current_metrics,
+        "history": list(METRIC_HISTORY),
         "servers": servers,
         "resource_count": resource_count,
         "active_project": pm.active_project
@@ -300,6 +334,36 @@ def nexus_run_command():
         if session_logger:
             session_logger.log("ERROR", f"Command execution failed: {cmd_str}", metadata={"error": str(e)})
         return jsonify({"error": str(e)}), 500
+
+@app.route('/llm/batch', methods=['POST'])
+def llm_batch_process():
+    """
+    Sub-Agent Supervisor: Executes multiple LLM extractions in parallel.
+    Reduces total token round-trips by aggregating results on the server.
+    """
+    requests_data = request.json.get("requests", [])
+    if not requests_data: return jsonify({"error": "No requests provided"}), 400
+    
+    from concurrent.futures import ThreadPoolExecutor
+    
+    import sys
+    from pathlib import Path
+    lib_path = str(Path(__file__).parent.parent / "mcp-link-library")
+    if lib_path not in sys.path: sys.path.append(lib_path)
+    try:
+        from mcp_wrapper import wrapper
+    except ImportError:
+        return jsonify({"error": "MCPWrapper not found"}), 500
+    # Real parallel loop
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = list(executor.map(wrapper.call, requests_data))
+        
+    return jsonify({
+        "total": len(results),
+        "results": results,
+        "efficiency_gain": "PARALLEL_REAL_EXECUTION"
+    })
 
 @app.route('/mcp/sse', methods=['GET'])
 def mcp_sse():

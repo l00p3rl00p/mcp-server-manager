@@ -43,8 +43,19 @@ The "Surgeon" that bridges the gap between the installer and the user's IDE.
 ### 4. The Bridge Generator (`bridge.py`)
 Converts legacy scripts into AI-accessible MCP tools.
 
-*   **Pattern Matching**: Scans for `if __name__ == "__main__":` and typical function signatures.
-*   **Wrapper Logic**: Generates a FastAPI-based (standard) or stdio-based (lite) MCP server that imports and executes the original functions.
+*   **Wrapper Logic**: Generates a MCP server that imports and executes original functions.
+
+### 5. The Workforce Nexus GUI (`gui/` & `gui_bridge.py`)
+The orchestration hub for the entire suite.
+* **Unified Bridge**: A Flask-based API on port 5001 that abstracts CLI tools into RESTful actions.
+* **Command Catalog**: Self-documenting registry of all Nexus capabilities.
+* **Real-time Monitoring**: Streams system telemetry (CPU/RAM/Disk) and session logs.
+
+### 6. The ATP Efficiency Layer (Standard Implementation)
+Adheres to the "Agent Tool Protocol" for token optimization.
+* **Search API**: Allows on-demand discovery of tools to prevent context bloat.
+* **Raw Data Flow**: CLI tools return structured JSON via `--json` for agent-side processing.
+* **Isolated Execution**: Execute custom agent logic in a restricted environment to ensure security.
 
 ---
 
