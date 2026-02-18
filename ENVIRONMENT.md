@@ -32,11 +32,17 @@ This repo also creates (if missing) subdirectories used by the GUI:
 
 ---
 
-## 🖥 GUI Notes
+## 🖥️ GUI & Telemetry Stack
 
-* Default local URL: `http://localhost:8501`
-* Logs are written to the suite’s active logs directory (central + writable).
-* GUI actions that spawn subprocesses should be recorded to the shared devlog when `--devlog` is enabled.
+The GUI operates as a decoupled frontend-backend architecture:
+* **Frontend**: React/Vite application serving at `http://127.0.0.1:5173`.
+* **Backend Bridge**: Flask bridge serving at `http://0.0.0.0:5001`.
+* **Telemetry**: Real-time system metrics (CPU, Memory, Disk, Net) provided by the `psutil` library.
+
+### Observability Loop
+* GUI actions (Start/Stop) are sent via POST to `:5001/server/control`.
+* System status and metrics are polled every 2s via GET from `:5001/status`.
+* Logs and artifacts are synchronized from the shared `~/.mcpinv/` directory.
 
 ---
 

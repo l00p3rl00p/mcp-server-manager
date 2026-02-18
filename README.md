@@ -4,6 +4,15 @@
 
 The **Observer** is a specialized tool for tracking, monitoring, and visualizing the state of your MCP ecosystem. It ensures that you always know *what* is running, *where* it is installed, and *how* healthy it is.
 
+## 🚀 Quick Start (Standalone)
+
+To launch the Visual Dashboard immediately:
+```bash
+python3 -m mcp_inventory.cli gui
+```
+
+> **Part of the Workforce Nexus Suite**: For full orchestration and global command setup, see the [Master README](../README.md).
+
 ---
 
 ## 🌟 Core Capabilities

@@ -15,6 +15,12 @@ from .util import slugify
 from .logger import setup_logging, log_event
 from .state import write_inventory_snapshot, write_runtime_snapshot, write_health_snapshot
 
+try:
+    from nexus_session_logger import NexusSessionLogger
+    session_logger = NexusSessionLogger()
+except ImportError:
+    session_logger = None
+
 
 def _print_kv(title: str, value: str) -> None:
     print(f"{title}: {value}")
@@ -320,7 +326,15 @@ def main() -> None:
     pgui.set_defaults(func=cmd_gui)
 
     args = p.parse_args()
+    
+    if session_logger:
+        session_logger.log_thinking("Operational", f"Executing observer command: {args.cmd}")
+        
     rc = args.func(args)
+    
+    if session_logger:
+        session_logger.log_command(f"observer {args.cmd}", "SUCCESS" if rc == 0 else "ERROR")
+        
     raise SystemExit(rc)
 
 if __name__ == "__main__":

@@ -1,0 +1,1 @@
+{"servers": {"test-server": {"name": "Test Server", "command": "sleep 100"}}}
