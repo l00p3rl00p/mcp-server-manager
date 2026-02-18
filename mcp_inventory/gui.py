@@ -75,6 +75,11 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
             resource = path[len("/api/state/"):]
             self.api_get_state(resource)
             return
+
+        # API: Get Antigravity Config State
+        if path == "/api/config_state":
+            self.api_get_config_state()
+            return
         
         # API: Get Specific Action Log
         if path.startswith("/api/logs/"):
@@ -91,6 +96,11 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
         if path == "/api/system_status":
             self.api_system_status()
             return
+            
+        # API: Full State Aggregation (Optimization)
+        if path == "/api/state/full":
+            self.api_get_full_state()
+            return
 
         # Serve Static Files
         super().do_GET()
@@ -99,10 +109,9 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        # API: Trigger Action
-        if path.startswith("/api/action/"):
-            command = path[len("/api/action/"):]
-            self.api_trigger_action(command)
+        # API: Toggle Server (Enable/Disable in Antigravity config)
+        if path == "/api/toggle_server":
+            self.api_toggle_server()
             return
 
         self.send_error(404, "Not Found")
@@ -143,58 +152,69 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json_response({"lines": lines})
         except Exception as e:
             self.send_error(500, str(e))
-
-    def api_get_logs(self):
-        # Read latest lines from the log file
-        log_file = ACTIVE_LOGS_DIR / "mcpinv.jsonl"
-        if not log_file.exists():
-             self.send_json_response({"logs": []})
-             return
-
+    def api_get_config_state(self):
+        """Fetch the current disabled/enabled state from Antigravity config."""
+        config_path = Path.home() / ".gemini" / "antigravity" / "mcp_config.json"
+        if not config_path.exists():
+            self.send_json_response({"mcpServers": {}})
+            return
+        
         try:
-            # Read last 100 lines (naive approach)
-            lines = log_file.read_text(encoding="utf-8").splitlines()[-100:]
-            # Wrap in checking if they are valid json
-            parsed_logs = []
-            for line in lines:
-                try:
-                    parsed_logs.append(json.loads(line))
-                except json.JSONDecodeError:
-                    parsed_logs.append({"message": line, "level": "RAW"})
-            
-            # Read Librarian logs
-            lib_log_file = ACTIVE_LOGS_DIR / "librarian_errors.log"
-            if lib_log_file.exists():
-                lib_lines = lib_log_file.read_text(encoding="utf-8").splitlines()[-50:] # Last 50 errors
-                for line in lib_lines:
-                    # Format: [ISO_TIMESTAMP] Message
-                    if line.startswith("["):
-                        try:
-                            ts_end = line.find("]")
-                            if ts_end != -1:
-                                ts = line[1:ts_end]
-                                msg = line[ts_end+1:].strip()
-                                parsed_logs.append({
-                                    "timestamp": ts,
-                                    "level": "ERROR",
-                                    "message": f"[Librarian] {msg}",
-                                    "source": "librarian"
-                                })
-                        except:
-                            pass
-
-            # Sort by timestamp
-            def parse_ts(entry):
-                return entry.get("timestamp", "")
-            
-            parsed_logs.sort(key=parse_ts)
-            
-            self.send_json_response({"logs": parsed_logs})
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            self.send_json_response(config)
         except Exception as e:
             self.send_error(500, str(e))
 
-    def api_system_status(self):
-        """Check for presence of Nexus components."""
+    def api_toggle_server(self):
+        """Enable or disable a server in the Antigravity mcp_config.json."""
+        content_length = int(self.headers.get('Content-Length', 0))
+        if content_length <= 0:
+            self.send_error(400, "Missing payload")
+            return
+
+        try:
+            raw_data = self.rfile.read(content_length)
+            data = json.loads(raw_data)
+            server_id = data.get("name")
+            disabled = data.get("disabled")
+
+            if server_id is None or disabled is None:
+                self.send_error(400, f"Missing name or disabled state in {data}")
+                return
+
+            config_path = Path.home() / ".gemini" / "antigravity" / "mcp_config.json"
+            if not config_path.exists():
+                self.send_error(404, f"Config not found at {config_path}")
+                return
+
+            # Atomic read-modify-write
+            config_text = config_path.read_text(encoding="utf-8")
+            config = json.loads(config_text)
+            
+            if "mcpServers" not in config:
+                config["mcpServers"] = {}
+            
+            if server_id not in config["mcpServers"]:
+                self.send_error(404, f"Server {server_id} not found in config")
+                return
+
+            config["mcpServers"][server_id]["disabled"] = disabled
+            config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+            log_event(_maybe_devlog(), "server_toggled", {"server": server_id, "disabled": disabled})
+            self.send_json_response({"success": True, "message": f"Server {server_id} {'disabled' if disabled else 'enabled'}"})
+
+        except Exception as e:
+            self.send_error(500, str(e))
+
+    def api_get_logs(self):
+        try:
+            logs = self._get_logs_internal(limit=100)
+            self.send_json_response({"logs": logs})
+        except Exception as e:
+            self.send_error(500, str(e))
+
+    def _get_system_status_data(self):
         import sys
         import os
         from pathlib import Path
@@ -241,8 +261,95 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
         act_path = nexus_root / "repo-mcp-packager" / "bootstrap.py"
         if act_path.exists():
             status["activator"] = check_heartbeat(act_path)
-            
+        
+        return status
+
+    def api_system_status(self):
+        """Check for presence of Nexus components."""
+        status = self._get_system_status_data()
         self.send_json_response(status)
+
+    def api_get_full_state(self):
+        """Aggregated endpoint for Zero-Token Optimization (1 call vs 5 calls)."""
+        try:
+            # 1. Config
+            config_path = Path.home() / ".gemini" / "antigravity" / "mcp_config.json"
+            config_data = {"mcpServers": {}}
+            if config_path.exists():
+                 try:
+                    config_data = json.loads(config_path.read_text(encoding="utf-8"))
+                 except: pass
+
+            # 2. Filesystem State (Inventory & Health)
+            inventory_data = {"entries": []}
+            health_data = None
+            
+            inv_path = STATE_DIR / "inventory.json"
+            if inv_path.exists():
+                try: inventory_data = json.loads(inv_path.read_text(encoding="utf-8"))
+                except: pass
+                
+            health_path = STATE_DIR / "health.json"
+            if health_path.exists():
+                try: health_data = json.loads(health_path.read_text(encoding="utf-8"))
+                except: pass
+            
+            # 3. Logs (Limit 50)
+            logs_data = self._get_logs_internal(limit=50)
+            
+            # 4. System Status
+            system_status = self._get_system_status_data()
+            
+            full_state = {
+                "configState": config_data,
+                "inventory": inventory_data.get("entries", []),
+                "health": health_data,
+                "logs": logs_data,
+                "system": system_status
+            }
+            self.send_json_response(full_state)
+            
+        except Exception as e:
+            self.send_error(500, f"Aggregation failed: {e}")
+
+    def _get_logs_internal(self, limit=100):
+        parsed_logs = []
+        log_file = ACTIVE_LOGS_DIR / "mcpinv.jsonl"
+        
+        if log_file.exists():
+            try:
+                lines = log_file.read_text(encoding="utf-8").splitlines()[-limit:]
+                for line in lines:
+                    try:
+                        parsed_logs.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        parsed_logs.append({"message": line, "level": "RAW"})
+            except: pass
+            
+        # Librarian Logs
+        lib_log_file = ACTIVE_LOGS_DIR / "librarian_errors.log"
+        if lib_log_file.exists():
+            try:
+                lib_lines = lib_log_file.read_text(encoding="utf-8").splitlines()[-50:]
+                for line in lib_lines:
+                     if line.startswith("["):
+                        try:
+                            ts_end = line.find("]")
+                            if ts_end != -1:
+                                ts = line[1:ts_end]
+                                msg = line[ts_end+1:].strip()
+                                parsed_logs.append({
+                                    "timestamp": ts,
+                                    "level": "ERROR",
+                                    "message": f"[Librarian] {msg}",
+                                    "source": "librarian"
+                                })
+                        except: pass
+            except: pass
+            
+        # Sort
+        parsed_logs.sort(key=lambda x: x.get("timestamp", ""))
+        return parsed_logs
 
     def api_trigger_action(self, command: str):
         # Allowed commands whitelist for security
@@ -361,8 +468,9 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
             }
             self.send_json_response(response)
             
+
         except Exception as e:
-            self.send_error(500, str(e))
+            self.send_error(500, f"Action failed: {e}")
 
     def send_json_response(self, data: Any):
         content = json.dumps(data).encode("utf-8")
