@@ -1,0 +1,8 @@
+[
+    {
+        "symptom": "pkill kills IDE (Cursor/VS Code) unexpectedly",
+        "trigger": "Running pkill -f node or pkill -f vite",
+        "fix": "Use exact PID matching or unique identifiers for processes, or rely on manual restart if automation is risky.",
+        "context": "Agent execution environment is shared with IDE"
+    }
+]

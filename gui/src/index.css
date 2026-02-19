@@ -305,3 +305,61 @@ button.nav-item:hover {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-dim);
 }
+
+input,
+select,
+textarea {
+  color: var(--text-main);
+}
+
+/* Metric Side Panel — true flex sibling that slides open via width transition */
+.metric-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0);
+  z-index: 999;
+  pointer-events: none;
+  transition: background 0.3s ease;
+}
+
+.metric-backdrop.open {
+  background: rgba(0, 0, 0, 0.4);
+  pointer-events: all;
+}
+
+.metric-side-panel {
+  width: 0;
+  height: 100%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: hsl(240, 10%, 7%);
+  border-left: 0px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), border-left-width 0.35s;
+  box-shadow: -8px 0 40px rgba(0, 0, 0, 0);
+}
+
+.metric-side-panel.open {
+  width: 380px;
+  border-left-width: 1px;
+  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.5);
+}
+
+.metric-side-panel>* {
+  min-width: 380px;
+}
+
+.inspector-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

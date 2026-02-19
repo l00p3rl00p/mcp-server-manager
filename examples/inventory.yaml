@@ -30,3 +30,8 @@ servers:
   tags:
   - forged
   - nexus-v3
+- confidence: forged
+  status: ready
+  tags:
+  - forged
+  - nexus-v3

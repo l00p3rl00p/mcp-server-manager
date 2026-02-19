@@ -53,14 +53,24 @@ class ProjectManager:
         """Captures a timestamped copy of the inventory.yaml for recovery."""
         if not self.inventory_path.exists(): return
         try:
-            snapshot_dir = pm.app_data_dir / "snapshots"
+            # Ensure snapshot directory exists
+            snapshot_dir = self.app_data_dir / "snapshots"
             snapshot_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Create timestamped filename
             stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            target_file = snapshot_dir / f"inventory_{stamp}.yaml"
+            
+            # Copy file
             import shutil
-            shutil.copy2(self.inventory_path, snapshot_dir / f"inventory_{stamp}.yaml")
-            # Prune to last 10
-            snaps = sorted(snapshot_dir.glob("inventory_*.yaml"), reverse=True)
-            for s in snaps[10:]: s.unlink()
+            shutil.copy2(self.inventory_path, target_file)
+            
+            # Prune old snapshots (keep last 10)
+            snaps = sorted(snapshot_dir.glob("inventory_*.yaml"))
+            while len(snaps) > 10:
+                oldest = snaps.pop(0)
+                try: oldest.unlink()
+                except: pass
         except Exception as e:
             if session_logger: session_logger.log("ERROR", f"Snapshot capture failed: {str(e)}")
 
@@ -301,13 +311,13 @@ def validate_env():
     if not (pm.app_data_dir / "knowledge.db").exists():
         results.append({"domain": "Librarian", "status": "warning", "msg": "Knowledge base empty.", "fix": "Add scan roots and index"})
 
-    # 5. Check for common port conflicts
-    import socket
-    def is_port_in_use(port):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            return s.connect_ex(('localhost', port)) == 0
-    if is_port_in_use(5001):
-        results.append({"domain": "Networking", "status": "warning", "msg": "Port 5001 in use (Bridge default).", "fix": "Check for other bridge instances"})
+    # 5. Check for common port conflicts - REMOVED (self-check causes false positive)
+    # import socket
+    # def is_port_in_use(port):
+    #     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    #         return s.connect_ex(('localhost', port)) == 0
+    # if is_port_in_use(5001):
+    #     results.append({"domain": "Networking", "status": "warning", "msg": "Port 5001 in use (Bridge default).", "fix": "Check for other bridge instances"})
 
     return jsonify(results)
 
@@ -395,37 +405,78 @@ def export_report():
     template = """
     <html>
     <head><style>
-        body { font-family: sans-serif; padding: 40px; color: #333; }
-        .card { border: 1px solid #ccc; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        .success { color: green; }
-        .error { color: red; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #333; background: #f4f4f9; }
+        .card { background: white; border: 1px solid #ddd; padding: 25px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        h1 { color: #2c3e50; }
+        h2 { color: #34495e; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .success { color: #2ecc71; font-weight: bold; }
+        .error { color: #e74c3c; font-weight: bold; }
+        .warning { color: #f1c40f; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; color: #7f8c8d; font-size: 12px; text-transform: uppercase; }
+        code { background: #f1f2f6; padding: 2px 6px; border-radius: 4px; font-family: monospace; color: #e74c3c; }
+        .log-entry { font-family: monospace; font-size: 12px; border-bottom: 1px solid #eee; padding: 8px 0; }
     </style></head>
     <body>
-        <h1>Workforce Nexus - System Performance Report</h1>
-        <p>Generated on: {{ time }}</p>
+        <h1>Nexus Audit Report</h1>
+        <p><strong>Generated:</strong> {{ time }}</p>
+        
         <div class="card">
             <h2>System Health</h2>
-            <p>Status: <span class="success">OPTIMAL</span></p>
-            <p>Active Project: {{ project.id }} ({{ project.path }})</p>
+            <p><strong>Overall Posture:</strong> <span class="{{ 'success' if status.pulse == 'green' else 'error' }}">{{ status.posture }}</span></p>
+            <p><strong>Project:</strong> {{ project.id }}</p>
+            <p><strong>Location:</strong> <code>{{ project.path }}</code></p>
+            
+            <table>
+                <tr><th>Component</th><th>Status</th></tr>
+                <tr><td>Activator</td><td class="{{ 'success' if status.activator == 'online' else 'error' }}">{{ status.activator }}</td></tr>
+                <tr><td>Librarian</td><td class="{{ 'success' if status.librarian == 'online' else 'error' }}">{{ status.librarian }}</td></tr>
+            </table>
         </div>
+
         <div class="card">
-            <h2>Resources</h2>
-            <p>Total Indexed Links: {{ resource_count }}</p>
+            <h2>Inventory Manifest</h2>
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Status</th><th>Type</th><th>PID</th></tr>
+                </thead>
+                <tbody>
+                    {% for s in status.servers %}
+                    <tr>
+                        <td>{{ s.name }}</td>
+                        <td><span class="{{ 'success' if s.status == 'online' else 'error' }}">{{ s.status }}</span></td>
+                        <td>{{ s.type }}</td>
+                        <td>{{ s.metrics.pid or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>Recent Activity Logs</h2>
+            {% for log in logs[-20:] %}
+            <div class="log-entry">
+                <span style="color: #95a5a6">{{ log.iso }}</span>
+                <span style="font-weight: bold; color: {{ '#e74c3c' if log.level == 'ERROR' else '#3498db' }}">{{ log.level }}</span>
+                {{ log.message }}
+            </div>
+            {% endfor %}
         </div>
     </body>
     </html>
     """
-    resource_count = 0
-    db_path = pm.app_data_dir / "knowledge.db"
-    if db_path.exists():
-        conn = sqlite3.connect(db_path)
-        resource_count = conn.execute("SELECT count(*) FROM links").fetchone()[0]
-        conn.close()
-        
+    
+    # Gather data
+    status_data = get_status().get_json()
+    logs_data = get_logs().get_json()
+    
     html = render_template_string(template, 
                                   time=datetime.datetime.now().isoformat(),
                                   project=pm.active_project,
-                                  resource_count=resource_count)
+                                  status=status_data,
+                                  logs=logs_data)
     return html
 
 @app.route('/nexus/catalog', methods=['GET'])
@@ -433,14 +484,25 @@ def nexus_catalog():
     """Return a metadata catalog of all reachable Nexus commands."""
     catalog = [
         {
+            "id": "observer",
+            "name": "Nexus Observer",
+            "bin": "mcp-observer", 
+            "description": "Health Monitoring and Resource Telemetry.",
+            "actions": [
+                {"name": "Health Check", "cmd": "health", "desc": "Active probe of system components."},
+                {"name": "List Servers", "cmd": "list", "desc": "Show all registered MCP servers."},
+                {"name": "Running Procs", "cmd": "running", "desc": "Check running server processes."}
+            ]
+        },
+        {
             "id": "activator",
             "name": "Nexus Activator",
             "bin": "mcp-activator",
             "description": "Installer and synchronization engine.",
             "actions": [
                 {"name": "Sync Suite", "cmd": "--sync", "desc": "Updates all Nexus components to match local source."},
-                {"name": "Industrial Install", "cmd": "--permanent", "desc": "Hardens the installation for industrial use (PATH, venv)."},
-                {"name": "Check Integrity", "cmd": "--check", "desc": "Verifies suite connectivity and manifest health."}
+                {"name": "Repair Suite", "cmd": "--repair", "desc": "Fixes missing dependencies and permissions."},
+                {"name": "Custom Run", "cmd": "", "desc": "Run with custom flags (e.g. --lite, --verbose)."}
             ]
         },
         {
@@ -450,29 +512,18 @@ def nexus_catalog():
             "description": "Knowledge Base and Resource Manager.",
             "actions": [
                 {"name": "Index Suite", "cmd": "--index-suite", "desc": "Scan Observer/Injector for discovery."},
-                {"name": "Add Resource", "cmd": "--add", "desc": "Index a new URL or file path.", "arg": "url"},
-                {"name": "Index Folder", "cmd": "--index", "desc": "Deep scan a directory.", "arg": "path"},
+                {"name": "Add Resource", "cmd": "--add", "desc": "Index a new URL.", "arg": "url"},
                 {"name": "Start Watcher", "cmd": "--watch", "desc": "Activate real-time file monitoring."}
             ]
         },
         {
-            "id": "observer",
-            "name": "Nexus Observer",
-            "bin": "mcp-observer",
-            "description": "Health Monitoring and Resource Telemetry.",
+            "id": "injector",
+            "name": "MCP Injector",
+            "bin": "python3 ../mcp-injector/mcp_injector.py",
+            "description": "Output management for IDE configurations.",
             "actions": [
-                {"name": "Verify Status", "cmd": "--status", "desc": "Check health of all registered servers."},
-                {"name": "Log Pulse", "cmd": "--pulse", "desc": "Record current metrics to the session log."}
-            ]
-        },
-        {
-            "id": "surgeon",
-            "name": "Nexus Surgeon",
-            "bin": "mcp-surgeon",
-            "description": "Surgical Cleanup and Repair Tool.",
-            "actions": [
-                {"name": "Repair Venv", "cmd": "--repair", "desc": "Rebuilds central virtual environments."},
-                {"name": "Flush Artifacts", "cmd": "--purge", "desc": "Cleans the artifacts directory."}
+                {"name": "List Detected", "cmd": "--list", "desc": "Show servers currently configured in IDEs."},
+                {"name": "List Clients", "cmd": "--list-clients", "desc": "Show locations of detected IDE configs."}
             ]
         }
     ]
@@ -485,6 +536,57 @@ def project_history():
     if not snapshot_dir.exists(): return jsonify([])
     snaps = sorted(snapshot_dir.glob("inventory_*.yaml"), reverse=True)
     return jsonify([{"name": s.name, "path": str(s), "time": s.stat().st_mtime} for s in snaps])
+
+@app.route('/system/update/nexus', methods=['POST'])
+def system_update_nexus():
+    """Update the Nexus Suite (git pull + reinstall)."""
+    try:
+        # Assumes running from source
+        root = pm.app_data_dir.parent # strict assumption, usage varies
+        # Better: use the current working directory if it's a git repo
+        repo_dir = Path.cwd()
+        if (repo_dir / ".git").exists():
+             subprocess.Popen(["git", "pull"], cwd=repo_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+             # We might need to restart the bridge?
+             return jsonify({"success": True, "message": "Git pull initiated. Please restart the bridge to apply changes."})
+        return jsonify({"error": "Not a git repository."}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/nexus/help', methods=['POST'])
+def nexus_help():
+    """Fetches help output for a given binary."""
+    bin_str = request.json.get("bin")
+    if not bin_str: return jsonify({"error": "Binary required"}), 400
+    
+    allowed = ["mcp-activator", "mcp-observer", "mcp-librarian", "python3"]
+    cmd_parts = shlex.split(bin_str)
+    if cmd_parts[0] not in allowed:
+         return jsonify({"error": "Command not allowed"}), 403
+         
+    try:
+        # Append --help. Handle python scripts correctly by appending to the end.
+        full_cmd = cmd_parts + ["--help"]
+        env = os.environ.copy()
+        env["NEXUS_PROJECT_PATH"] = pm.active_project["path"]
+        
+        res = subprocess.run(full_cmd, capture_output=True, text=True, timeout=5, env=env)
+        output = res.stdout if res.stdout else res.stderr
+        return jsonify({"help": output, "success": True})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Command timed out", "success": False})
+    except Exception as e:
+        return jsonify({"error": str(e), "success": False}), 500
+
+@app.route('/system/update/python', methods=['POST'])
+def system_update_python():
+    """Update Python dependencies."""
+    try:
+        subprocess.Popen([sys.executable, "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"], 
+                         cwd=Path.cwd(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return jsonify({"success": True, "message": "Pip upgrade initiated in background."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/project/rollback', methods=['POST'])
 def project_rollback():
@@ -518,6 +620,47 @@ def nexus_projects():
         pm.set_project(path, p_id)
         return jsonify({"success": True, "active_id": p_id})
     return jsonify(pm.get_projects())
+
+@app.route('/project/snapshot', methods=['POST'])
+def project_snapshot():
+    """Manually triggers a state snapshot."""
+    try:
+        pm.save_snapshot()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/injector/clients', methods=['GET'])
+def injector_clients():
+    """Wrapper to list known clients from mcp-injector."""
+    try:
+        # We shell out to mcp-injector to avoid import pollution and rely on its logic
+        # Assuming mcp-injector is peer to mcp-server-manager
+        root = Path(__file__).parent.parent
+        injector_script = root / "mcp-injector" / "mcp_injector.py"
+        
+        known = {
+            "claude": ["~/Library/Application Support/Claude/claude_desktop_config.json", "~/.config/Claude/claude_desktop_config.json"],
+            "vscode": ["~/Library/Application Support/Code/User/mcp_settings.json"],
+            "cursor": ["~/.cursor/mcp.json"],
+            "xcode": ["~/Library/Developer/Xcode/UserData/MCPServers/config.json"],
+            "aistudio": ["~/.config/aistudio/mcp_servers.json"]
+        }
+        
+        results = []
+        for name, paths in known.items():
+            for p in paths:
+                expanded = Path(os.path.expanduser(p))
+                if expanded.exists():
+                    results.append({"id": name, "path": str(expanded), "exists": True})
+                    break
+            else:
+                 # Default to first path if not found
+                 results.append({"id": name, "path": str(Path(os.path.expanduser(paths[0]))), "exists": False})
+                 
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/export/logs', methods=['GET'])
 def export_logs():
@@ -752,38 +895,46 @@ class ForgeManager:
         task = self.tasks[task_id]
         task["status"] = "running"
         try:
-            forge_script = Path(__file__).parent / "forge" / "mcp-forge.py"
-            # Determine if source is a local dir or a repo URL
-            is_dir = os.path.isdir(os.path.expanduser(source))
-            args = ["--dir" if is_dir else "--repo", source]
-            if name: args.extend(["--name", name])
+            # Dynamically import to ensure we get the latest
+            import sys
+            project_root = Path(__file__).parent
+            if str(project_root / "forge") not in sys.path:
+                sys.path.insert(0, str(project_root / "forge"))
             
-            cmd = [sys.executable, str(forge_script)] + args
+            from forge_engine import ForgeEngine
             
-            # Use Popen to capture streaming output
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            # Initialize with the active project's inventory path
+            # We must use pm.inventory_path which is dynamically set
+            engine = ForgeEngine(pm.app_data_dir.parent, inventory_path=pm.inventory_path)
             
-            for line in iter(process.stdout.readline, ''):
-                if line:
-                    task["logs"].append(line.strip())
+            task["logs"].append(f"Starting Forge for: {source}")
+            task["logs"].append(f"Target Inventory: {pm.inventory_path}")
             
-            process.wait()
+            # Capture stdout for realtime logs (mock for now as we are in thread)
+            # In v3.2 we can redirect stdout properly
             
-            success = process.returncode == 0
-            task["status"] = "completed" if success else "failed"
+            target_path = engine.forge(source, name)
+            
+            task["logs"].append(f"Forge successful.")
+            task["logs"].append(f"Server available at: {target_path}")
+            
+            task["status"] = "completed"
             task["result"] = {
-                "success": success,
+                "success": True,
                 "stdout": "\n".join(task["logs"]),
-                "stderr": "" # Stderr merged into stdout
+                "server_path": str(target_path)
             }
             
             if session_logger:
-                status = "SUCCESS" if success else "FAILED"
-                session_logger.log_command(f"FORGE: {source}", status, result="\n".join(task["logs"]))
+                session_logger.log_command(f"FORGE: {source}", "SUCCESS", result=str(target_path))
 
         except Exception as e:
             task["status"] = "failed"
-            task["logs"].append(f"ERROR: {str(e)}")
+            error_msg = f"ERROR: {str(e)}"
+            task["logs"].append(error_msg)
+            import traceback
+            task["logs"].append(traceback.format_exc())
+            
             task["result"] = {"success": False, "error": str(e)}
             if session_logger:
                 session_logger.log("ERROR", f"Forge failed: {str(e)}")
