@@ -10,8 +10,8 @@ def test_json_list():
         data = json.loads(result.stdout)
         print(f"✅ JSON mode verified. Found {len(data)} items.")
         return True
-    except:
-        print(f"❌ JSON mode failed: {result.stdout}")
+    except json.JSONDecodeError:
+        print(f"❌ JSON mode failed (invalid JSON): {result.stdout[:200]}")
         return False
 
 def test_execute_code():

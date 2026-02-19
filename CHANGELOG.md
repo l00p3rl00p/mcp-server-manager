@@ -1,5 +1,20 @@
 # Changelog - MCP Observer (mcp-server-manager)
 
+## [3.2.0] - 2026-02-19
+
+### Security
+- CORS restricted to `localhost:5173/5174` only — wildcard removed.
+- `ForgeManager.tasks` writes now guarded by `threading.Lock` — eliminates race on concurrent forge requests.
+- `NexusSessionLogger` file writes guarded by `threading.Lock` — prevents JSONL interleaving.
+
+### Fixes
+- Bare `except:` in `scan.py:120` → typed `(json.JSONDecodeError, KeyError)`.
+- Bare `except:` in `verify_atp_v16.py:13` → `json.JSONDecodeError`.
+- `App.tsx`: 20+ hardcoded `localhost:5001` URLs → single `API_BASE` constant (`VITE_API_URL`-driven).
+- `setup.sh`: Added `set -o noclobber`.
+
+---
+
 ## [2.0.0] - 2026-02-18
 
 ### 📊 Observability (The Agent HUD)

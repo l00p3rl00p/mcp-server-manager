@@ -32,6 +32,13 @@ interface Notification {
   message: string;
 }
 
+/**
+ * Single source of truth for the backend URL.
+ * Override via VITE_API_URL env var for staging/production deployments.
+ * All fetch() calls in this file should use API_BASE — never hardcode localhost directly.
+ */
+const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:5001';
+
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -103,7 +110,7 @@ const App: React.FC = () => {
 
       await Promise.all(endpoints.map(async ([path, setter]) => {
         try {
-          const res = await fetch(`http://127.0.0.1:5001/${path}`);
+          const res = await fetch(`${API_BASE}/${path}`);
           if (res.ok) {
             const data = await res.json();
             if (data !== null) setter(data);
@@ -129,7 +136,7 @@ const App: React.FC = () => {
   const handleControl = async (id: string, action: string) => {
     try {
       addNotification(`Sending ${action} command to ${id}...`, 'info');
-      const res = await fetch('http://127.0.0.1:5001/server/control', {
+      const res = await fetch(API_BASE + '/server/control', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, action })
       });
@@ -159,7 +166,7 @@ const App: React.FC = () => {
       addNotification(`Executing: ${cmd.split(' ')[0]}...`, 'info');
       setOpOutputs(prev => ({ ...prev, [key]: { status: 'running', output: '...' } }));
 
-      const res = await fetch('http://127.0.0.1:5001/nexus/run', {
+      const res = await fetch(API_BASE + '/nexus/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: cmd })
       });
@@ -193,7 +200,7 @@ const App: React.FC = () => {
     setHelpTitle(title);
     setHelpContent("Loading help...");
     try {
-      const res = await fetch('http://127.0.0.1:5001/nexus/help', {
+      const res = await fetch(API_BASE + '/nexus/help', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bin })
       });
@@ -296,7 +303,7 @@ const App: React.FC = () => {
               <select className="glass-card" style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', cursor: 'pointer' }} value={systemStatus?.active_project?.id} onChange={e => {
                 const p = projects.find(x => x.id === e.target.value);
                 if (p) {
-                  fetch('http://127.0.0.1:5001/nexus/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, path: p.path }) }).then(() => {
+                  fetch(API_BASE + '/nexus/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, path: p.path }) }).then(() => {
                     addNotification(`Switched to project: ${p.id}`, 'info');
                     fetchData();
                   });
@@ -401,7 +408,7 @@ const App: React.FC = () => {
                           {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager', 'nexus-librarian'].includes(s.id) ? (
                             <button className="nav-item" style={{ padding: '8px', color: 'var(--danger)' }} onClick={async () => {
                               if (confirm(`Remove '${s.name}' from inventory?`)) {
-                                const res = await fetch('http://127.0.0.1:5001/server/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) });
+                                const res = await fetch(API_BASE + '/server/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) });
                                 if (res.ok) { addNotification(`Removed ${s.name}.`, 'success'); fetchData(); }
                                 else { const d = await res.json(); addNotification(d.error || 'Failed.', 'error'); }
                               }
@@ -445,7 +452,7 @@ const App: React.FC = () => {
                           {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager', 'nexus-librarian'].includes(s.id) ? (
                             <button className="nav-item" style={{ padding: '4px 8px', color: 'var(--danger)' }} onClick={async () => {
                               if (confirm(`Remove '${s.name}'?`)) {
-                                const res = await fetch('http://127.0.0.1:5001/server/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) });
+                                const res = await fetch(API_BASE + '/server/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) });
                                 if (res.ok) { addNotification(`Removed ${s.name}.`, 'success'); fetchData(); }
                               }
                             }} title="Remove"><Trash2 size={14} /></button>
@@ -492,7 +499,7 @@ const App: React.FC = () => {
                         <td style={{ padding: '16px', textAlign: 'right' }}>
                           <button className="nav-item" style={{ border: 'none', color: '#ef4444', background: 'transparent' }} onClick={() => {
                             if (confirm(`Are you sure you want to delete "${l.title}" from the knowledge base?`)) {
-                              fetch('http://127.0.0.1:5001/librarian/resource/delete', {
+                              fetch(API_BASE + '/librarian/resource/delete', {
                                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: l.id })
                               }).then(res => {
                                 if (res.ok) {
@@ -542,7 +549,7 @@ const App: React.FC = () => {
                 </div>
                 <button className="nav-item badge-success" style={{ fontWeight: 600 }} onClick={() => {
                   addNotification("Opening standard health report...", "info");
-                  window.open('http://127.0.0.1:5001/export/report', '_blank');
+                  window.open(API_BASE + '/export/report', '_blank');
                 }}>
                   <FileText size={18} /> Audit
                 </button>
@@ -743,7 +750,7 @@ const App: React.FC = () => {
                         setIsForging(true);
                         setForgeResult(null);
                         try {
-                          const res = await fetch('http://127.0.0.1:5001/forge', {
+                          const res = await fetch(API_BASE + '/forge', {
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ source: forgeSource, name: forgeName })
                           });
@@ -751,7 +758,7 @@ const App: React.FC = () => {
                           if (data.task_id) {
                             addNotification("Forge task started. Monitoring...", "info");
                             const poll = setInterval(async () => {
-                              const statusRes = await fetch(`http://127.0.0.1:5001/forge/status/${data.task_id}`);
+                              const statusRes = await fetch(`${API_BASE}/forge/status/${data.task_id}`);
                               const statusData = await statusRes.json();
 
                               // Update logs in real-time
@@ -816,7 +823,7 @@ const App: React.FC = () => {
                           <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
                             <button className="nav-item badge-success" onClick={async () => {
                               // Fetch clients
-                              const res = await fetch('http://127.0.0.1:5001/injector/clients');
+                              const res = await fetch(API_BASE + '/injector/clients');
                               const clients = await res.json();
                               const clientName = prompt(`Select client to inject (Available: ${clients.map((c: any) => c.id).join(', ')})`, 'claude');
 
@@ -865,7 +872,7 @@ const App: React.FC = () => {
                   <button className="nav-item badge-success" style={{ padding: '0 24px' }} onClick={async () => {
                     const p = (document.getElementById('root-entry') as HTMLInputElement).value;
                     if (!p) return addNotification("Path cannot be empty.", "error");
-                    const res = await fetch('http://127.0.0.1:5001/librarian/roots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: p }) });
+                    const res = await fetch(API_BASE + '/librarian/roots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: p }) });
                     if (res.ok) {
                       addNotification("Scan root added successfully.", "success");
                       (document.getElementById('root-entry') as HTMLInputElement).value = '';
@@ -879,7 +886,7 @@ const App: React.FC = () => {
                       <code>{r.path}</code>
                       <X size={16} style={{ cursor: 'pointer', color: '#ef4444', opacity: 0.6 }} onClick={() => {
                         if (confirm("Remove this scan root?")) {
-                          fetch(`http://127.0.0.1:5001/librarian/roots?id=${r.id}`, { method: 'DELETE' }).then(() => {
+                          fetch(`${API_BASE}/librarian/roots?id=${r.id}`, { method: 'DELETE' }).then(() => {
                             addNotification("Scan root removed.", "success");
                             fetchData();
                           });
@@ -899,7 +906,7 @@ const App: React.FC = () => {
                   <button className="nav-item" onClick={async () => {
                     addNotification("Capturing snapshot...", "info");
                     try {
-                      await fetch('http://127.0.0.1:5001/project/snapshot', { method: 'POST' });
+                      await fetch(API_BASE + '/project/snapshot', { method: 'POST' });
                       addNotification("Snapshot captured successfully.", "success");
                       fetchData();
                     } catch (e) { addNotification(String(e), 'error'); }
@@ -920,7 +927,7 @@ const App: React.FC = () => {
                       </div>
                       <button className="nav-item" style={{ border: '1px solid rgba(168, 85, 247, 0.4)', color: '#a855f7' }} onClick={() => {
                         if (confirm("DANGER: Rollback will overwrite current configuration. Proceed?")) {
-                          fetch('http://127.0.0.1:5001/project/rollback', {
+                          fetch(API_BASE + '/project/rollback', {
                             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: h.name })
                           }).then(res => {
                             if (res.ok) {
@@ -949,7 +956,7 @@ const App: React.FC = () => {
                     <button className="nav-item" style={{ borderColor: '#3b82f6', color: '#3b82f6' }} onClick={async () => {
                       addNotification("Initiating Suite Update...", "info");
                       try {
-                        const res = await fetch('http://127.0.0.1:5001/system/update/nexus', { method: 'POST' });
+                        const res = await fetch(API_BASE + '/system/update/nexus', { method: 'POST' });
                         const d = await res.json();
                         addNotification(d.message || d.error, d.success ? "success" : "error");
                       } catch (e) { addNotification(String(e), 'error'); }
@@ -966,7 +973,7 @@ const App: React.FC = () => {
                     <button className="nav-item" style={{ borderColor: '#eab308', color: '#eab308' }} onClick={async () => {
                       addNotification("Upgrading Python packages...", "info");
                       try {
-                        const res = await fetch('http://127.0.0.1:5001/system/update/python', { method: 'POST' });
+                        const res = await fetch(API_BASE + '/system/update/python', { method: 'POST' });
                         const d = await res.json();
                         addNotification(d.message || d.error, d.success ? "success" : "error");
                       } catch (e) { addNotification(String(e), 'error'); }
@@ -983,7 +990,7 @@ const App: React.FC = () => {
                 <button className="nav-item" style={{ borderColor: '#ef4444', color: '#ef4444', width: '100%', padding: '14px', fontWeight: 700 }} onClick={() => {
                   if (confirm("UNINSTALL everything?")) {
                     addNotification("Uninstall sequence started...", "error");
-                    fetch('http://127.0.0.1:5001/system/uninstall', { method: 'POST' }).then(res => {
+                    fetch(API_BASE + '/system/uninstall', { method: 'POST' }).then(res => {
                       if (res.ok) window.location.reload();
                     });
                   }

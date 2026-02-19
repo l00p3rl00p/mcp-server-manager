@@ -117,7 +117,8 @@ def _manifest_signals(dirpath: Path, c: Candidate) -> None:
             data = json.loads(_read_text_safe(lib_path))
             c.install_mode = data.get("install_mode", "dev")
             c.remote_url = data.get("remote_url")
-        except:
+        except (json.JSONDecodeError, KeyError):
+            # Malformed manifest — proceed without install_mode/remote_url
             pass
 
 

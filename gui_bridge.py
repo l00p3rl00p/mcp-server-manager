@@ -14,7 +14,8 @@ METRIC_HISTORY = deque(maxlen=60)
 from pathlib import Path
 
 app = Flask(__name__)
-CORS(app) 
+# Restrict CORS to local dev origins only — wildcard CORS is a release blocker
+CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174"])
 
 # Official Logging Integration
 try:
@@ -877,36 +878,44 @@ import threading
 import uuid
 
 class ForgeManager:
-    """Manages asynchronous Forge tasks."""
+    """Manages asynchronous Forge tasks.
+
+    Thread safety: self._lock must be held for all reads/writes of self.tasks
+    because start_task (HTTP thread) and _run_forge (background thread)
+    both mutate the dict concurrently.
+    """
     MAX_TASKS = 50  # Evict oldest terminal tasks beyond this cap
 
     def __init__(self):
         self.tasks = {}
+        self._lock = threading.Lock()  # Guards all self.tasks mutations
 
     def _evict(self):
-        """Remove oldest completed/failed tasks when cap is exceeded."""
+        """Remove oldest completed/failed tasks when cap is exceeded. Caller must hold self._lock."""
         if len(self.tasks) < self.MAX_TASKS:
             return
         terminal = [
             (tid, t) for tid, t in self.tasks.items()
             if t["status"] in ("completed", "failed")
         ]
-        # Sort by start_time ascending and drop oldest half
+        # Sort by start_time ascending and drop oldest half to stay under cap
         terminal.sort(key=lambda x: x[1].get("start_time", 0))
         for tid, _ in terminal[: len(terminal) // 2 + 1]:
             del self.tasks[tid]
 
     def start_task(self, source, name=None):
-        self._evict()
-        task_id = str(uuid.uuid4())
-        self.tasks[task_id] = {
-            "id": task_id,
-            "status": "pending",
-            "source": source,
-            "logs": [],
-            "result": None,
-            "start_time": time.time()
-        }
+        """Register a new forge task and return its ID. Thread-safe."""
+        with self._lock:
+            self._evict()
+            task_id = str(uuid.uuid4())
+            self.tasks[task_id] = {
+                "id": task_id,
+                "status": "pending",
+                "source": source,
+                "logs": [],
+                "result": None,
+                "start_time": time.time()
+            }
         thread = threading.Thread(target=self._run_forge, args=(task_id, source, name))
         thread.daemon = True
         thread.start()
