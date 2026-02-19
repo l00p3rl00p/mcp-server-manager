@@ -77,6 +77,12 @@ To fully align with these outcomes, the following enhancements are planned:
 * **Visual Semantics**: The sidebar now actively communicates system state via "Pulse Dots" (Red=Fatal, Blue=Update), reducing the need to constantly check the dashboard for critical issues.
 * **Resilient Lifecycle**: The `Start Nexus.command` script is now fully detached, ensuring the backend survives inconsistent terminal states or user closures.
 
+### 2026-02-19 Alignment Update (v3.3 - Zero-Friction Suite)
+* **Zero-Friction Command Suite**: Double-clickable `.command` (Mac) and `.bat` (Windows) scripts provided for both Unified Root and Per-Repo tasks. No terminal knowledge required for core maintenance.
+* **Sync Gridlock Resilience**: The `mcp-activator --sync` engine now handles git conflicts automatically via forced resets and cleans for the industrial environment.
+* **Contextual GUI Foundations**: Replaced center-screen modals with inline **Command Drawers** for server injection. Integrated contextual Audit Report buttons into every Server Card.
+* **Dynamic Workspace Detection**: The bootstrap engine now utilizes 3-tier deep heuristic checks to identify development workspaces regardless of the caller's initial working directory.
+
 ---
 
 ## 🚥 High-Fidelity Signals
@@ -101,4 +107,6 @@ To fully align with these outcomes, the following enhancements are planned:
 * **Contextual Help**: Operation tab 'Help/Info' buttons must be scoped to the specific card (e.g., inside 'Custom Run') to avoid UI clutter. (DELIVERED v3.3)
 * **Deep Observability**: A dedicated Logging View is required. Users must be able to view detailed, per-server `stdout/stderr` streams. A global **"Nexus System Log"** must be prominently available to debug the orchestrator itself, distinct from the ephemeral Command Hub output.
 * **Contextual Audit**: The 'Audit Report' capability must be available per-component (Server/Librarian/System) rather than a generic global action. (DELIVERED v3.3)
-* **Core Reliability**: The `nexus-librarian`  and other  Type-0 Core Dependency MUST auto-start with the GUI and auto-restart on failure. A "Stopped" CORE is a System Defect unless it is "on demand" CORE. (DELIVERED v3.3)
+* **Core Reliability**: The `nexus-librarian` and other Type-0 Core Dependency MUST auto-start with the GUI and auto-restart on failure. A "Stopped" CORE is a System Defect. (DELIVERED v3.3)
+* **Managed Mirror Policy**: The industrial runtime environment (`~/.mcp-tools`) is a **Managed Mirror**. Any local changes in the mirror are considered "drift" and will be automatically overwritten by the workspace or GitHub on a `--sync` to ensure deterministic stability. (DELIVERED v3.3)
+* **Zero-Friction Maintenance**: Common maintenance tasks (Install, Sync, Dashboard, Health) must be accessible via OS-native double-clickable scripts located at the project root. (DELIVERED v3.3)
