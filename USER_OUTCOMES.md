@@ -72,6 +72,11 @@ To fully align with these outcomes, the following enhancements are planned:
 * **OS Visibility**: Server on/off state is visible in the macOS menu bar without opening a browser or terminal.
 * **Browser Independence**: Closing the browser tab does not stop the server — lifecycle is owned by the tray icon, not the browser.
 
+### 2026-02-19 Alignment Update (v3.2.10)
+* **One-Click Injection**: The "Forge" capability now extends to the Dashboard. Generic servers can be injected into any supported IDE (Claude, VSCode, Cursor) via a dedicated UI modal, eliminating CLI friction.
+* **Visual Semantics**: The sidebar now actively communicates system state via "Pulse Dots" (Red=Fatal, Blue=Update), reducing the need to constantly check the dashboard for critical issues.
+* **Resilient Lifecycle**: The `Start Nexus.command` script is now fully detached, ensuring the backend survives inconsistent terminal states or user closures.
+
 ---
 
 ## 🚥 High-Fidelity Signals
@@ -91,3 +96,9 @@ To fully align with these outcomes, the following enhancements are planned:
 * **Isolation of Concerns**: Execution logic should run in an isolated environment, keeping host system secrets (SSH keys, unrelated tokens) protected from untrusted code. (DELIVERED)
 * **Cost Transparency**: Users must see the "Token Weight" of every interaction to make informed decisions. (DELIVERED)
 * **ATP Compliance**: Shell operations must default to `noclobber` to prevent accidental data loss. (DELIVERED)
+* **Non-Blocking Interfaces**: Critical actions (like Injection) must utilize **inline expansion** (accordions/drawers) instead of center-screen modals. The UI must NEVER obscure real-time error toasts or logs. (DELIVERED v3.3)
+* **Lifecycle Persistence**: Servers must maintain their last known state (Running/Stopped) across Nexus restarts. New servers auto-start upon creation. Unexpected stops must trigger a logged error event.
+* **Contextual Help**: Operation tab 'Help/Info' buttons must be scoped to the specific card (e.g., inside 'Custom Run') to avoid UI clutter. (DELIVERED v3.3)
+* **Deep Observability**: A dedicated Logging View is required. Users must be able to view detailed, per-server `stdout/stderr` streams. A global **"Nexus System Log"** must be prominently available to debug the orchestrator itself, distinct from the ephemeral Command Hub output.
+* **Contextual Audit**: The 'Audit Report' capability must be available per-component (Server/Librarian/System) rather than a generic global action. (DELIVERED v3.3)
+* **Core Reliability**: The `nexus-librarian`  and other  Type-0 Core Dependency MUST auto-start with the GUI and auto-restart on failure. A "Stopped" CORE is a System Defect unless it is "on demand" CORE. (DELIVERED v3.3)

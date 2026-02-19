@@ -10,9 +10,10 @@ The **Observer** is the "Eyes" of the Workforce Nexus. It provides real-time obs
 
 ### 1. The Lifecycle Manager (`nexus_tray.py`)
 The entry point for the desktop experience.
-* **Dual-Threading**: Flask (Backend) runs as a daemon thread, while `pystray` (System Tray) owns the main thread.
-* **Platform Anchors**: Implements the "Indigo Dot" (macOS) and System Tray icon (Windows).
-* **Control**: Handles "Open Dashboard" and "Stop & Quit" signals to ensure clean process termination.
+*   **Dual-Threading**: Flask (Backend) runs as a daemon thread, while `pystray` (System Tray) owns the main thread.
+*   **Platform Anchors**: Implements the "Indigo Dot" (macOS) and System Tray icon (Windows).
+*   **Control**: Handles "Open Dashboard" and "Stop & Quit" signals to ensure clean process termination.
+*   **Detached Launch**: The `Start Nexus.command` script uses `nohup` and `disown` to strictly separate the backend process from the terminal window, ensuring the server persists even if the terminal is closed.
 
 ### 2. The GUI Bridge (`gui_bridge.py`)
 The backend API for the React dashboard.
@@ -44,6 +45,6 @@ A high-performance React + Vite dashboard.
 ---
 
 ## 📝 Metadata
-* **Status**: Stable Release (v3.2.5)
+* **Status**: Stable Release (v3.2.11 "Dynamic Injection")
 * **Author**: l00p3rl00p
 * **Part of**: The Workforce Nexus Suite

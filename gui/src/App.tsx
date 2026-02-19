@@ -72,13 +72,26 @@ const App: React.FC = () => {
   const [inventoryHistory, setInventoryHistory] = useState<any[]>([]);
   const [commandCatalog, setCommandCatalog] = useState<any[]>([]);
   const [catalogInputs, setCatalogInputs] = useState<any>({});
-  const [inventoryView, setInventoryView] = useState<'card' | 'list'>('card');
+  const [inventoryView, setInventoryView] = useState<'card' | 'list'>(() => {
+    return (localStorage.getItem('nexus_inventory_view') as 'card' | 'list') || 'card';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('nexus_inventory_view', inventoryView);
+  }, [inventoryView]);
 
   // Forge State
   const [forgeSource, setForgeSource] = useState('');
   const [forgeName, setForgeName] = useState('');
   const [isForging, setIsForging] = useState(false);
   const [forgeResult, setForgeResult] = useState<any>(null);
+
+  // Injection State
+  // Injection State
+  const [injectTarget, setInjectTarget] = useState<any>(null);
+  const [injectionStatus, setInjectionStatus] = useState<any>(null);
+  const [targetClient, setTargetClient] = useState('');
+  const [availableClients, setAvailableClients] = useState<string[]>([]);
 
   // Terminal Filter State
   const [terminalFilter, setTerminalFilter] = useState('');
@@ -309,6 +322,58 @@ const App: React.FC = () => {
         </div>
       </aside>
 
+      {/* Injection Modal */}
+      {injectTarget && (
+        <div className="inspector-overlay" onClick={() => setInjectTarget(null)} style={{ background: 'rgba(0,0,0,0.8)', zIndex: 3000 }}>
+          <div className="glass-card" onClick={e => e.stopPropagation()} style={{ width: '500px', animation: 'fadeIn 0.2s ease-out' }}>
+            <div style={{ paddingBottom: '16px', borderBottom: '1px solid var(--card-border)', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
+              <h3>Inject Server: {injectTarget.name}</h3>
+              <X size={20} style={{ cursor: 'pointer' }} onClick={() => setInjectTarget(null)} />
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ fontSize: '12px', color: 'var(--text-dim)', display: 'block', marginBottom: '8px' }}>CURRENT INJECTIONS</label>
+              {injectionStatus ? (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {injectionStatus.injected_into?.length > 0 ? injectionStatus.injected_into.map((c: string) => (
+                    <span key={c} className="badge badge-success" style={{ fontSize: '11px' }}>{c}</span>
+                  )) : <span style={{ fontSize: '12px', fontStyle: 'italic', opacity: 0.6 }}>Not injected anywhere.</span>}
+                </div>
+              ) : <span className="pulse-dot pulse-blue"></span>}
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ fontSize: '12px', color: 'var(--text-dim)', display: 'block', marginBottom: '8px' }}>INJECT INTO</label>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <select className="glass-card" style={{ flex: 1, padding: '8px', background: 'rgba(0,0,0,0.3)' }} value={targetClient} onChange={e => setTargetClient(e.target.value)}>
+                  {availableClients.length > 0 ? (
+                    availableClients.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)
+                  ) : (
+                    <option value="" disabled>No supported IDEs detected</option>
+                  )}
+                </select>
+                <button className="nav-item badge-primary" style={{ background: 'var(--primary)', color: '#fff', border: 'none' }} onClick={() => {
+                  addNotification(`Injecting ${injectTarget.name} into ${targetClient}...`, 'info');
+                  fetch(API_BASE + '/nexus/run', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: `mcp-surgeon --add ${injectTarget.name} --client ${targetClient}` })
+                  }).then(r => r.json()).then(d => {
+                    if (d.success) {
+                      addNotification("Injection successful.", "success");
+                      setInjectTarget(null); // Close
+                    } else {
+                      addNotification(d.stderr || d.error, "error");
+                    }
+                  });
+                }}>
+                  Inject Now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Content area: main + metric side panel side-by-side */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         <main className="main-viewport" style={{ flex: 1, overflow: 'hidden auto' }}>
@@ -355,14 +420,14 @@ const App: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }}>
                 <div className="glass-card metrics-card" onClick={() => openMetricPanel('cpu')} style={{ cursor: 'pointer' }}>
                   <Cpu size={24} color="var(--primary)" />
-                  <span style={{ fontSize: '26px', fontWeight: 700, margin: '12px 0 4px' }}>{systemStatus?.metrics?.cpu ?? 0}%</span>
-                  <p style={{ color: 'var(--text-dim)', fontSize: '12px', display: 'flex', justifyContent: 'space-between', width: '100%', margin: 0 }}>
+                  <span style={{ fontSize: '26px', fontWeight: 700, margin: '12px 0 4px', display: 'block' }}>{systemStatus?.metrics?.cpu ?? 0}%</span>
+                  <p style={{ color: 'var(--text-dim)', fontSize: '12px', display: 'flex', justifyContent: 'space-between', width: '100%', margin: '0' }}>
                     CPU Usage <Sparkline data={(systemStatus?.history || []).map((h: any) => h.cpu)} color="var(--primary)" width={60} height={20} />
                   </p>
                 </div>
                 <div className="glass-card metrics-card" onClick={() => openMetricPanel('ram')} style={{ cursor: 'pointer' }}>
                   <Monitor size={24} color="var(--success)" />
-                  <span style={{ fontSize: '26px', fontWeight: 700, margin: '12px 0 4px' }}>
+                  <span style={{ fontSize: '26px', fontWeight: 700, margin: '12px 0 4px', display: 'block' }}>
                     {((systemStatus?.metrics?.ram_used ?? 0) / 1024 / 1024 / 1024).toFixed(1)} GB
                   </span>
                   <p style={{ color: 'var(--text-dim)', fontSize: '12px', margin: 0 }}>
@@ -371,7 +436,7 @@ const App: React.FC = () => {
                 </div>
                 <div className="glass-card metrics-card" onClick={() => openMetricPanel('disk')} style={{ cursor: 'pointer' }}>
                   <HardDrive size={24} color="#a855f7" />
-                  <span style={{ fontSize: '26px', fontWeight: 700, margin: '12px 0 4px' }}>
+                  <span style={{ fontSize: '26px', fontWeight: 700, margin: '12px 0 4px', display: 'block' }}>
                     {((systemStatus?.metrics?.disk_used ?? 0) / 1024 / 1024 / 1024).toFixed(0)} GB
                   </span>
                   <p style={{ color: 'var(--text-dim)', fontSize: '12px', margin: 0 }}>
@@ -380,7 +445,7 @@ const App: React.FC = () => {
                 </div>
                 <div className="glass-card metrics-card" style={{ position: 'relative', cursor: 'pointer' }} onClick={() => openMetricPanel('health')}>
                   <Globe size={24} color="#3b82f6" />
-                  <span style={{ fontSize: '26px', fontWeight: 700, margin: '12px 0 4px' }}>{systemStatus?.pulse === 'green' ? 'Stable' : 'Unstable'}</span>
+                  <span style={{ fontSize: '26px', fontWeight: 700, margin: '12px 0 4px', display: 'block' }}>{systemStatus?.pulse === 'green' ? 'Stable' : 'Unstable'}</span>
                   <p style={{ color: 'var(--text-dim)', fontSize: '12px', margin: 0 }}>Fleet Health</p>
                 </div>
               </div>
@@ -402,51 +467,135 @@ const App: React.FC = () => {
                 </div>
                 {/* Card View */}
                 {inventoryView === 'card' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-                    {(systemStatus?.servers || []).map((s: any) => (
-                      <div key={s.id} className="glass-card metrics-card" style={{ padding: '20px', borderLeft: `4px solid ${s.status === 'online' ? '#10b981' : '#ef4444'}` }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div style={{ wordBreak: 'break-all' }}>
-                            <b style={{ fontSize: '16px' }}>{s.name}</b>
-                            <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '4px' }}>TYPE: {(s.type || 'server').toUpperCase()}</div>
-                            <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '2px', opacity: 0.7 }}>{s.raw?.path || s.id}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+                    {(systemStatus?.servers || []).map((s: any) => {
+                      const isInjecting = injectTarget?.id === s.id;
+
+                      return (
+                        <div key={s.id} className="glass-card metrics-card" style={{ padding: '20px', borderLeft: `4px solid ${s.status === 'online' ? '#10b981' : '#ef4444'}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div style={{ wordBreak: 'break-all' }}>
+                              <b style={{ fontSize: '16px' }}>{s.name}</b>
+                              <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '4px' }}>TYPE: {(s.type || 'server').toUpperCase()}</div>
+                              <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '2px', opacity: 0.7 }}>{s.raw?.path || s.id}</div>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                              <span className={`badge ${s.status === 'online' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10px' }}>{s.status}</span>
+                              {s.metrics?.pid && (
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                  <span className="badge badge-dim" style={{ fontSize: '9px' }}>PID: {s.metrics.pid}</span>
+                                  <span className="badge badge-dim" style={{ fontSize: '9px' }}>CPU: {s.metrics.cpu?.toFixed(1) ?? 0}%</span>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                            <span className={`badge ${s.status === 'online' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10px' }}>{s.status}</span>
-                            {s.metrics?.pid && (
-                              <div style={{ display: 'flex', gap: '4px' }}>
-                                <span className="badge badge-dim" style={{ fontSize: '9px' }}>PID: {s.metrics.pid}</span>
-                                <span className="badge badge-dim" style={{ fontSize: '9px' }}>CPU: {s.metrics.cpu?.toFixed(1) ?? 0}%</span>
-                                <span className="badge badge-dim" style={{ fontSize: '9px' }}>RAM: {(s.metrics.ram / 1024 / 1024).toFixed(0)}MB</span>
-                              </div>
+
+                          {/* Controls Row */}
+                          <div style={{ marginTop: '20px', display: 'flex', gap: '8px' }}>
+                            <button className={`nav-item ${s.status === 'online' ? 'badge-danger' : 'badge-success'}`} style={{ flex: 1, justifyContent: 'center', fontSize: '12px' }} onClick={() => handleControl(s.id, s.status === 'online' ? 'stop' : 'start')}>
+                              {s.status === 'online' ? 'Stop' : 'Start'}
+                            </button>
+
+                            {/* Audit Button (New Outcome) */}
+                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => window.open(`${API_BASE}/export/report?server=${s.id}`, '_blank')} title="Audit Log">
+                              <FileText size={18} />
+                            </button>
+
+                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => setSelectedItem(s.raw)} title="Inspect">
+                              <Search size={18} />
+                            </button>
+
+                            {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager', 'nexus-librarian'].includes(s.id) ? (
+                              <>
+                                <button className="nav-item" style={{ padding: '8px', color: 'var(--danger)' }} onClick={async () => {
+                                  if (confirm(`Remove '${s.name}' from inventory?`)) {
+                                    const res = await fetch(API_BASE + '/server/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) });
+                                    if (res.ok) { addNotification(`Removed ${s.name}.`, 'success'); fetchData(); }
+                                    else { const d = await res.json(); addNotification(d.error || 'Failed.', 'error'); }
+                                  }
+                                }} title="Remove">
+                                  <Trash2 size={18} />
+                                </button>
+
+                                <button className={`nav-item ${isInjecting ? 'active' : 'badge-command'}`} style={{ padding: '6px 12px', fontSize: '11px', display: 'flex', gap: '6px', alignItems: 'center' }} onClick={() => {
+                                  if (isInjecting) {
+                                    setInjectTarget(null); // Close drawer
+                                  } else {
+                                    setInjectTarget(s);
+                                    setInjectionStatus(null);
+                                    // Fetch clients
+                                    fetch(API_BASE + '/injector/clients').then(r => r.json()).then(d => {
+                                      setAvailableClients(d.clients || []);
+                                      if (d.clients && d.clients.length > 0) setTargetClient(d.clients[0]);
+                                    });
+                                    // Fetch status
+                                    fetch(API_BASE + '/injector/status', {
+                                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ server_id: s.id, name: s.name })
+                                    }).then(r => r.json()).then(d => setInjectionStatus(d));
+                                  }
+                                }} title="Inject to IDE">
+                                  <Activity size={12} /> {isInjecting ? 'Close' : 'Inject'}
+                                </button>
+                              </>
+                            ) : (
+                              <button className="nav-item" style={{ padding: '8px', opacity: 0.3, cursor: 'not-allowed' }} title="Core — Lifecycle only">
+                                <ShieldCheck size={18} />
+                              </button>
                             )}
                           </div>
-                        </div>
-                        <div style={{ marginTop: '20px', display: 'flex', gap: '8px' }}>
-                          <button className={`nav-item ${s.status === 'online' ? 'badge-danger' : 'badge-success'}`} style={{ flex: 1, justifyContent: 'center', fontSize: '12px' }} onClick={() => handleControl(s.id, s.status === 'online' ? 'stop' : 'start')}>
-                            {s.status === 'online' ? 'Stop' : 'Start'}
-                          </button>
-                          <button className="nav-item" style={{ padding: '8px' }} onClick={() => setSelectedItem(s.raw)} title="Inspect">
-                            <Search size={18} />
-                          </button>
-                          {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager', 'nexus-librarian'].includes(s.id) ? (
-                            <button className="nav-item" style={{ padding: '8px', color: 'var(--danger)' }} onClick={async () => {
-                              if (confirm(`Remove '${s.name}' from inventory?`)) {
-                                const res = await fetch(API_BASE + '/server/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) });
-                                if (res.ok) { addNotification(`Removed ${s.name}.`, 'success'); fetchData(); }
-                                else { const d = await res.json(); addNotification(d.error || 'Failed.', 'error'); }
-                              }
-                            }} title="Remove">
-                              <Trash2 size={18} />
-                            </button>
-                          ) : (
-                            <button className="nav-item" style={{ padding: '8px', opacity: 0.3, cursor: 'not-allowed' }} title="Core — Lifecycle only">
-                              <ShieldCheck size={18} />
-                            </button>
+
+                          {/* Inline Injection Drawer (Accordion) */}
+                          {isInjecting && (
+                            <div className="glass-card" style={{ marginTop: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--primary)', animation: 'slideIn 0.2s ease-out' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--primary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                Target IDE
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <select className="glass-card" style={{ flex: 1, padding: '8px', fontSize: '12px', background: 'rgba(255,255,255,0.05)' }} value={targetClient} onChange={e => setTargetClient(e.target.value)}>
+                                  {availableClients.length > 0 ? (
+                                    availableClients.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)
+                                  ) : (
+                                    <option value="" disabled>No supported IDEs found</option>
+                                  )}
+                                </select>
+                                <button className="nav-item badge-primary" style={{ padding: '8px 16px', fontSize: '12px' }} onClick={() => {
+                                  addNotification(`Injecting ${s.name} into ${targetClient}...`, 'info');
+                                  fetch(API_BASE + '/nexus/run', {
+                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ command: `mcp-surgeon --add ${s.name} --client ${targetClient}` })
+                                  }).then(r => r.json()).then(d => {
+                                    if (d.success) {
+                                      addNotification("Injection successful.", "success");
+                                      // Refresh status
+                                      fetch(API_BASE + '/injector/status', {
+                                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ server_id: s.id, name: s.name })
+                                      }).then(r => r.json()).then(d => setInjectionStatus(d));
+                                    } else {
+                                      addNotification(d.stderr || d.error || "Injection failed", "error");
+                                    }
+                                  });
+                                }}>
+                                  Inject
+                                </button>
+                              </div>
+
+                              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginBottom: '4px' }}>CURRENT STATE</div>
+                                {injectionStatus ? (
+                                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                    {injectionStatus.injected_into?.length > 0 ? injectionStatus.injected_into.map((c: string) => (
+                                      <span key={c} className="badge badge-success" style={{ fontSize: '10px' }}>{c}</span>
+                                    )) : <span style={{ fontSize: '11px', fontStyle: 'italic', opacity: 0.6 }}>Not injected anywhere.</span>}
+                                  </div>
+                                ) : <span className="pulse-dot pulse-blue" style={{ width: 6, height: 6 }}></span>}
+                              </div>
+                            </div>
                           )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
@@ -474,12 +623,27 @@ const App: React.FC = () => {
                           </button>
                           <button className="nav-item" style={{ padding: '4px 8px' }} onClick={() => setSelectedItem(s.raw)} title="Inspect"><Search size={14} /></button>
                           {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager', 'nexus-librarian'].includes(s.id) ? (
-                            <button className="nav-item" style={{ padding: '4px 8px', color: 'var(--danger)' }} onClick={async () => {
-                              if (confirm(`Remove '${s.name}'?`)) {
-                                const res = await fetch(API_BASE + '/server/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) });
-                                if (res.ok) { addNotification(`Removed ${s.name}.`, 'success'); fetchData(); }
-                              }
-                            }} title="Remove"><Trash2 size={14} /></button>
+                            <>
+                              <button className="nav-item" style={{ padding: '4px 8px', color: 'var(--danger)' }} onClick={async () => {
+                                if (confirm(`Remove '${s.name}'?`)) {
+                                  const res = await fetch(API_BASE + '/server/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) });
+                                  if (res.ok) { addNotification(`Removed ${s.name}.`, 'success'); fetchData(); }
+                                }
+                              }} title="Remove"><Trash2 size={14} /></button>
+                              <button className="nav-item badge-command" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => {
+                                setInjectTarget(s);
+                                setInjectionStatus(null);
+                                // Fetch clients first
+                                fetch(API_BASE + '/injector/clients').then(r => r.json()).then(d => {
+                                  setAvailableClients(d.clients || []);
+                                  if (d.clients && d.clients.length > 0) setTargetClient(d.clients[0]);
+                                });
+                                fetch(API_BASE + '/injector/status', {
+                                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ server_id: s.id, name: s.name })
+                                }).then(r => r.json()).then(d => setInjectionStatus(d));
+                              }} title="Inject"><Activity size={14} /></button>
+                            </>
                           ) : (
                             <button className="nav-item" style={{ padding: '4px 8px', opacity: 0.3, cursor: 'not-allowed' }} title="Core"><ShieldCheck size={14} /></button>
                           )}

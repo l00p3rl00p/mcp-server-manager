@@ -1,5 +1,11 @@
 # Changelog - MCP Observer (mcp-server-manager)
 
+## [3.3.0] - 2026-02-19
+- **Core Resilience**: `nexus-librarian` (and other Type-0 dependencies) now auto-start if missing when the GUI launches.
+- **Inline Injection**: Replaced the blocking Injection Modal with a non-intrusive "Accordion Drawer" directly inside the Server Card.
+- **Functional Parity**: Fixed `mcp-surgeon` argument parsing in the backend to ensure injection commands execute correctly (no more "Help Screen" failures).
+- **Deep Observability**: Added a "Contextual Audit" button to every server card for instant log access.
+
 ## [3.2.8] - 2026-02-19
 - **Librarian Empowerment**: Added "OPEN" and "EDIT" buttons to the Librarian tab. You can now open URLs in your browser or files in your native OS handler (Folders/PDFs/etc) directly from the GUI.
 - **Native Editing**: The Librarian now supports an "EDIT" action for local files, opening them in your system's default editor.
@@ -66,4 +72,13 @@
 - Command state persistence.
 
 ---
-*Status: Stable Release (v3.2.5)*
+## [3.2.10] - 2026-02-19
+- **Dashboard Injection Workflow**: Added a dedicated "Inject" action to server cards. Opens a modal to check current install status across IDEs (Claude/Cursor/VSCode) and inject with one click.
+- **Visual Alert System**: Added pulsing "Red Dot" (Operations) for fatal errors and "Blue Dot" (Lifecycle) for available updates to the sidebar.
+- **Startup Resilience**: The `Start Nexus.command` script now correctly detaches from the terminal using `nohup`, allowing the window to be closed without killing the backend.
+- **Control Fixes**: Resolved a critical `NameError` in `gui_bridge.py` that prevented Start/Stop actions.
+- **UX Polish**: Metric cards now have proper spacing. Inventory view state (List vs Card) is persisted across reloads.
+- **Safe Command Execution**: The Injector now uses the robust `mcp-surgeon` wrapper instead of raw python calls.
+
+---
+*Status: Stable Release (v3.2.10)*

@@ -32,10 +32,25 @@ echo "------------------------------------------------"
 echo "✅ Launching background process. You can close this window."
 
 # Run in background, ignoring HUP signal so it survives terminal closure
+mkdir -p "$HOME/.mcpinv"
 nohup python3 nexus_tray.py > "$HOME/.mcpinv/nexus.log" 2>&1 &
+PID=$!
+disown $PID
 
 # Give it a moment to initialize
 sleep 2
+
+# Verify it's still running
+if kill -0 $PID 2>/dev/null; then
+    echo "✅ Success! Process $PID running in background."
+    echo "👋 Shutting down terminal session..."
+else
+    echo "❌ Start failed! Check $HOME/.mcpinv/nexus.log for errors."
+    cat "$HOME/.mcpinv/nexus.log"
+    # Keep window open to show error
+    read -p "Press Enter to close..."
+    exit 1
+fi
 
 exit 0
 

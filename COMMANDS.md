@@ -1,98 +1,88 @@
-# Workforce Nexus: Exhaustive Command Reference
+# Workforce Nexus: Command Reference
 
-This document provides a complete list of commands for all modules in the Workforce Nexus suite.
+This document provides a complete, exhaustive list of commands for the Workforce Nexus suite. It merges and supersedes previous quick-start guides.
 
-Scope note: to avoid documentation drift, this table lists **only commands/flags that are verifiably present in this repo workspace** (i.e., `python3 … --help` shows them). Global wrappers (e.g. `mcp-activator`) may exist after installation, but their exact CLI surface depends on the installed shims.
-
----
-
-## 🚀 The Activator (repo-mcp-packager)
-**Main Responsibility**: Orchestration, Multi-tool Installation, and Workspace Sync.
-
-| Action | Direct Command |
-| :--- | :--- |
-| **Industrial Install / Bootstrap** | `python3 bootstrap.py --permanent` *(alias: --industrial)* |
-| **Lite Install / Bootstrap** | `python3 bootstrap.py --lite` |
-| **Sync Workspace (Update)** | `python3 bootstrap.py --sync` *(alias: --update)* |
-| **Launch Dashboard** | `python3 bootstrap.py --gui` |
-| **Standalone Repo Installer** | `python3 serverinstaller/install.py` |
-| **Full Wipe (Start Fresh) (CLI-only)** | `python3 uninstall.py --kill-venv --purge-data` *(add --verbose / --devlog for diagnostics; --yes for automation)* |
+> **Note**: All `mcp-*` commands assume you have the `~/.mcp-tools/bin` directory in your PATH. If not, you can run the underlying `python3` scripts directly from your workspace.
 
 ---
 
-## 👁️ The Observer (mcp-server-manager)
-**Main Responsibility**: Real-time observability, health monitoring, and the Visual Dashboard.
+## 🛠️ Core Lifecycle (The Activator)
+**Module**: `repo-mcp-packager`
+**Bin**: `mcp-activator` (or `python3 bootstrap.py`)
 
-| Action | Global Command | Direct Module Command |
+Responsible for installation, synchronization, and uninstallation.
+
+| Goal | Command | Description |
 | :--- | :--- | :--- |
-| **Launch Dashboard** | `mcp-observer gui` | `python3 -m mcp_inventory.cli gui` |
-| **Scan Workspace** | `mcp-observer scan .` | `python3 -m mcp_inventory.cli scan .` |
-| **List Inventory** | `mcp-observer list` | `python3 -m mcp_inventory.cli list` |
-| **Check Synergy** | `mcp-observer check-synergy` | `python3 -m mcp_inventory.cli check-synergy` |
-| **Check Heartbeats** | `mcp-observer running` | `python3 -m mcp_inventory.cli running` |
+| **Install / Bootstrap** | `python3 bootstrap.py --permanent` | Installs the suite to `~/.mcp-tools`. |
+| **Update / Sync** | `mcp-activator --sync` | **Crucial**: Syncs your git workspace changes to the active runtime. |
+| **Repair** | `mcp-activator --repair` | Fixes missing dependencies or broken venvs. |
+| **Uninstall (Wipe)** | `python3 uninstall.py --purge-data --kill-venv` | **Factory Reset**: Removes `~/.mcp-tools` and all data. |
 
 ---
 
-## 💉 The Surgeon (mcp-injector)
-**Main Responsibility**: Precise JSON configuration injection for IDEs (Claude, Cursor, etc.).
+## 👁️ Observability (The Observer)
+**Module**: `mcp-server-manager`
+**Bin**: `mcp-observer`
 
-| Action | Direct Command |
-| :--- | :--- |
-| **Inject Server (interactive)** | `python3 mcp_injector.py --add` *(optionally use --config PATH or --client NAME)* |
-| **Remove Server** | `python3 mcp_injector.py --remove` |
-| **List Config** | `python3 mcp_injector.py --list` |
-| **List Known Clients** | `python3 mcp_injector.py --list-clients` |
-| **Startup Detect + Prompt Inject** | `python3 mcp_injector.py --startup-detect` |
+Responsible for the Visual Dashboard, server health monitoring, and inventory management.
 
-*Supported Clients: `claude`, `cursor`, `vscode`, `xcode`, `codex`, `aistudio`, `google-antigravity` (alias of AI Studio)*
-
----
-
-## 📚 The Librarian (mcp-link-library)
-**Main Responsibility**: Knowledge persistence, link storage, and local codebase indexing.
-
-| Action | Direct Command |
-| :--- | :--- |
-| **Add URL** | `python3 mcp.py --add` |
-| **Index Directory** | `python3 mcp.py --index` |
-| **Search Knowledge** | `python3 mcp.py --search` |
-| **Index Sibling Tools** | `python3 mcp.py --index-suite` |
-| **Run as MCP server (stdio) (CLI-only)** | `python3 mcp.py --server` |
+| Goal | Command | Description |
+| :--- | :--- | :--- |
+| **Launch Dashboard** | `mcp-observer gui` | Starts the Web GUI (Default: http://localhost:8501). |
+| **Health Check** | `mcp-observer health` | Runs diagnostics on all suite components. |
+| **List Servers** | `mcp-observer list` | Lists all registered MCP servers. |
+| **Scan Workspace** | `mcp-observer scan .` | Auto-discovers MCP servers in the current directory. |
+| **Check Processes** | `mcp-observer running` | Shows running MCP-related processes (Docker, Python). |
 
 ---
 
-## 🌍 Directory Context Rules
+## 💉 Integration (The Surgeon)
+**Module**: `mcp-injector`
+**Bin**: `mcp-surgeon`
 
-### 1. Where to run what?
-*   **Autonomous Bootstrap**: Run `python3 bootstrap.py --permanent` from a standalone copy of the bootstrapper. It will automatically fetch the rest of the Workforce Nexus suite from GitHub if sibling repositories are not found.
-*   **Installation/Dev Mode**: Run from the root of a full workspace.
-*   **Daily Global Use**: Once installed, run `mcp-surgeon`, `mcp-observer`, etc., from **any directory** in your terminal.
-*   **Standalone Installer**: Run `python3 serverinstaller/install.py` from the root of the repository you wish to package.
+Responsible for configuring IDEs (Claude, Cursor, VSCode) to use your MCP servers.
 
-### 2. Service Management
-*   **Starting GUI**: `mcp-observer gui`
-*   **Stopping GUI**: Press `Ctrl + C` in the terminal where it's running.
-*   **Restarting**: Just rerun the command. It will automatically re-index your active servers.
-
-### 3. PATH Setup
-By default, Industrial installs place short-command wrappers in `~/.local/bin`.
-
-If `mcp-` commands are not found, first add this to your `~/.zshrc` (macOS) or `~/.bashrc`:
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-Optional (opt-in): you can also add the Nexus central bin directory:
-```bash
-export PATH="$HOME/.mcp-tools/bin:$PATH"
-```
+| Goal | Command | Description |
+| :--- | :--- | :--- |
+| **Inject Server** | `mcp-surgeon --add <server> --client <ide>` | `mcp-surgeon --add notebooklm --client claude` |
+| **List Clients** | `mcp-surgeon --list-clients` | Shows detected IDE configuration files. |
+| **List Injected** | `mcp-surgeon --client <ide> --list` | Shows servers currently configured in a specific IDE. |
+| **Remove Server** | `mcp-surgeon --remove <server>` | Removes a server from all known IDE configs. |
 
 ---
 
-## 🧩 GUI Widget Coverage
+## 📚 Knowledge (The Librarian)
+**Module**: `mcp-link-library`
+**Bin**: `mcp-librarian` (or `mcp.py`)
 
-The Nexus GUI scaffold in `repo-mcp-packager/gui/` now maps **every executable command** in this `COMMANDS.md` table to a widget action.
+Responsible for persistent indexing, file watching, and resource retrieval.
 
-* Widgets are **tier-gated** (`lite`, `standard`, `permanent`): unsupported actions render visually unchecked.
-* Widget execution routes through a safe backend allowlist (`widget_id`-based), then reports stdout/stderr and exit code.
-* Scope model is preserved: each repo remains standalone, while suite commands still assemble the integrated package.
+| Goal | Command | Description |
+| :--- | :--- | :--- |
+| **Start Server** | `mcp-librarian --server` | Runs the MCP stdio server (for IDE usage). |
+| **Start Watcher** | `mcp-librarian --watch` | **New**: Real-time file monitoring for indexed roots. |
+| **Add Resource** | `mcp-librarian --add <url/file>` | Indexes a specific URL or local file. |
+| **Index Directory** | `mcp-librarian --index <path>` | Recursively indexes a local directory. |
+| **Search** | `mcp-librarian --search <query>` | semantic/text search across the knowledge base. |
+
+---
+
+## 🐛 Troubleshooting & Maintenance
+
+### How to Reset/Reinstall
+If the system is out of sync or behaving erratically:
+
+1.  **Uninstall / Wipe**:
+    ```bash
+    # From mcp-server-manager or repo-mcp-packager directory
+    python3 uninstall.py --purge-data --kill-venv
+    ```
+2.  **Reinstall**:
+    ```bash
+    python3 bootstrap.py --permanent
+    ```
+3.  **Sync (if developing)**:
+    ```bash
+    mcp-activator --sync
+    ```

@@ -403,3 +403,16 @@ $ python3 /Users/almowplay/Developer/Github/mcp-creater-manager/mcp-server-manag
 **Verification Date**: 2026-02-18
 **Status**: ✅ COMPLETE - Better MCP Efficiency standards fully integrated.
 
+---
+
+### Unit v3.3: Core Resilience & Inline Injection ✅
+
+**Contract**: [AI-SDK-PROD-BUILD-v3.3-Unit1.md](../AI-SDK-PROD-BUILD-v3.3-Unit1.md)
+
+- [x] **Core Auto-Start**: `ProjectManager` verifies `nexus-librarian` is running on startup. (Verified via Code Audit of `gui_bridge.py`)
+- [x] **Functional Injection**: `nexus_run_command` correctly parses `mcp-surgeon` arguments (no more string-splitting errors). (Verified via Code Audit)
+- [x] **Inline UI**: `App.tsx` implements "Accordion Drawer" for injection, replacing the modal. (Verified via Code Audit)
+- [x] **Contextual Audit**: Audit button added to Server Card controls. (Verified via Code Audit)
+
+**Verification Date**: 2026-02-19
+**Status**: ✅ COMPLETE - Code implementation matches User Outcomes.

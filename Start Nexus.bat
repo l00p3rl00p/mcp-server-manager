@@ -17,4 +17,6 @@ echo 📦 Look for the Indigo dot in your system tray.
 echo ------------------------------------------------
 
 :: Use 'start' so the batch window can close
-start "" python nexus_tray.py
+:: Use 'start' with pythonw (windowless) so the batch window can close completely
+start "" pythonw nexus_tray.py
+exit

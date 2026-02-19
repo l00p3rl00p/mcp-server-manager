@@ -40,6 +40,11 @@ Transform any local folder or Git repository into a hardened MCP server.
 - **Port 5001**: The Flask bridge handles API requests and serves the React frontend directly from `gui/dist`.
 - **Latency-Free**: Optimized JSON responses for sub-10ms state updates.
 
+### 5. Seamless Injection (v3.3)
+- **Inline Experience**: Inject servers directly from the dashboard card—no modals, no context switching.
+- **Deep Observability**: Stream live logs per-server and audit health instantly.
+- **Core Resilience**: Librarian auto-starts and runs self-healing checks on launch.
+
 ---
 
 ## 🔐 Safety & Governance
@@ -49,6 +54,6 @@ Transform any local folder or Git repository into a hardened MCP server.
 ---
 
 ## 📝 Metadata
-* **Status**: Production Ready (v3.2.1)
+* **Status**: Stable Release (v3.3)*
 * **GUI Port**: 5001
 * **Part of**: The Workforce Nexus Suite
