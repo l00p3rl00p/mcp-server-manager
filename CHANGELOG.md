@@ -1,5 +1,15 @@
 # Changelog - MCP Observer (mcp-server-manager)
 
+## [3.2.1] - 2026-02-19
+
+### Improvements
+- **System Tray App**: `nexus_tray.py` — Flask runs as daemon thread; pystray owns main thread. GUI never requires a terminal.
+- **Desktop Launcher**: `Start Nexus.command` placed on `~/Desktop` at install time. Double-click to start; move anywhere.
+- `gui_bridge.py` direct invocation now redirects to tray. `NEXUS_HEADLESS=1` flag for CI/server environments.
+- `pystray` + `Pillow` added to dependencies.
+
+---
+
 ## [3.2.0] - 2026-02-19
 
 ### Security
@@ -39,4 +49,4 @@
 - Command state persistence.
 
 ---
-*Status: Production Ready (v2.0.0)*
+*Status: Production Ready (v3.2.1)*

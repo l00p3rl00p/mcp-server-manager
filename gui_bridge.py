@@ -996,5 +996,17 @@ def forge_status(task_id):
     return jsonify(task)
 
 if __name__ == '__main__':
-    print(f"🚀 Nexus GUI Bridge v11 - Active Project: {pm.active_project['id']}")
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    # ── Do not run gui_bridge.py directly ──────────────────────────────────
+    # The canonical entry point is nexus_tray.py, which starts Flask in a
+    # daemon thread and provides a macOS/Windows system-tray icon.
+    # Double-click "Start Nexus.command" on your Desktop instead.
+    #
+    # This fallback exists for CI / headless environments only.
+    import os
+    if os.environ.get("NEXUS_HEADLESS") == "1":
+        print(f"🚀 Nexus GUI Bridge (headless) — port 5001")
+        app.run(host='127.0.0.1', port=5001, debug=False)
+    else:
+        print("⚠️  Use  'python3 nexus_tray.py'  or double-click 'Start Nexus.command' on your Desktop.")
+        print("   Set NEXUS_HEADLESS=1 to force terminal mode (CI/servers only).")
+

@@ -45,9 +45,11 @@ Converts legacy scripts into AI-accessible MCP tools.
 
 *   **Wrapper Logic**: Generates a MCP server that imports and executes original functions.
 
-### 5. The Workforce Nexus GUI (`gui/` & `gui_bridge.py`)
+### 5. The Workforce Nexus GUI (`gui/` + `nexus_tray.py` + `gui_bridge.py`)
 The orchestration hub for the entire suite.
-* **Unified Bridge**: A Flask-based API on port 5001 that abstracts CLI tools into RESTful actions.
+* **System Tray Entry Point** (`nexus_tray.py`): Flask runs as a daemon thread; `pystray` owns the main thread. The tray icon IS the process lifecycle — closing the browser does not stop the server. Launch via `~/Desktop/Start Nexus.command` (double-click).
+* **Desktop Launcher** (`Start Nexus.command`): Placed on `~/Desktop` at install time. Activates venv, cds to project, starts `nexus_tray.py`. User can move anywhere.
+* **Unified Bridge** (`gui_bridge.py`): Flask API on `127.0.0.1:5001` (localhost-only). Direct invocation now redirects to `nexus_tray.py`. Set `NEXUS_HEADLESS=1` for CI/server mode.
 * **Command Catalog**: Self-documenting registry of all Nexus capabilities.
 * **Real-time Monitoring**: Streams system telemetry (CPU/RAM/Disk) and session logs.
 
@@ -138,6 +140,15 @@ The GUI scaffold (`repo-mcp-packager/gui/`) acts as an orchestration layer over 
 ---
 
 ## 📝 Metadata
-*   **Status**: Production / Hardened (Phase 9)
+*   **Status**: Production / Hardened (v3.2.1)
 *   **Developer**: l00p3rl00p
 *   **Reference**: [USER_OUTCOMES.md](./USER_OUTCOMES.md) | [ENVIRONMENT.md](./ENVIRONMENT.md)
+
+### v3.2.1 Process Lifecycle Change
+| Before | After |
+|---|---|
+| `python3 gui_bridge.py` in terminal | Double-click `Start Nexus.command` on Desktop |
+| Terminal stays open; closing it kills Flask | Terminal not needed; tray icon owns process |
+| Browser close has no effect | Same — browser close does not stop server |
+| No visible on/off state | macOS menu-bar indigo dot = server running |
+| Stop: kill terminal | Stop: tray menu → "Stop & Quit" |

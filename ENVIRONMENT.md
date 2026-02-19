@@ -9,10 +9,12 @@ Host environment requirements, safety rules, and OS-specific paths for the **Ser
 ### Python
 * **Minimum**: Python **3.9+**
 * **Recommended**: Python **3.11+**
+* **Dependencies**: `flask`, `flask-cors`, `psutil`, `pystray`, `Pillow`.
 * **Isolation**: When installed as part of the suite, runs from the **central** Nexus environment under `~/.mcp-tools` (no workspace venv required).
 
 ### GUI runtime
-* The GUI runs as a local web app (served from Python). No Node/Docker required for the default GUI.
+* The GUI runs as a **System Tray App** (`nexus_tray.py`).
+* It starts a Flask backend on a daemon thread and a `pystray` icon in the OS menu bar.
 
 ---
 
@@ -23,21 +25,17 @@ The suite uses predictable, user-owned paths:
 * Tools bin: `~/.mcp-tools/bin`
 * Shared venv (optional): `~/.mcp-tools/.venv`
 * Shared state + devlogs: `~/.mcpinv/`
-* Inventory file (created on install if missing): `~/.mcp-tools/mcp-server-manager/inventory.yaml`
-
-This repo also creates (if missing) subdirectories used by the GUI:
-* `state/`
-* `logs/`
-* `artifacts/`
+* Inventory file: `~/.mcpinv/projects.json`
+* Launcher (Alias/Command): `~/Desktop/Start Nexus.command`
 
 ---
 
 ## 🖥️ GUI & Telemetry Stack
 
 The GUI operates as a decoupled frontend-backend architecture:
-* **Frontend**: React/Vite application serving at `http://127.0.0.1:5173`.
-* **Backend Bridge**: Flask bridge serving at `http://0.0.0.0:5001`.
-* **Telemetry**: Real-time system metrics (CPU, Memory, Disk, Net) provided by the `psutil` library.
+* **Frontend**: React/Vite application (production build served by Flask or dev server at `:5173`).
+* **Backend Bridge**: Flask bridge serving at `http://127.0.0.1:5001`.
+* **Telemetry**: Real-time system metrics provided by `psutil`.
 
 ### Observability Loop
 * GUI actions (Start/Stop) are sent via POST to `:5001/server/control`.

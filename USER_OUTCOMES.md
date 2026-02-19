@@ -55,7 +55,7 @@ As a user, I want:
 
 To fully align with these outcomes, the following enhancements are planned:
 
-*   **GUI Reliability (Target 95%+)**: Transition GUI from a blocking process to a background service with PID management.
+*   **GUI Reliability (Target 95%+)**: ~~Transition GUI from a blocking process to a background service with PID management.~~ **DELIVERED (v3.2.1)** — System tray (`pystray`) + Desktop launcher. Flask runs as daemon thread. No terminal required.
 *   **Librarian Synergy**: Implement a dynamic watcher so the Librarian indexes changes in real-time, not just on installation.
 *   **Operational Awareness**: Add "version health" checks to the GUI dashboard to visually signal when a `--sync` is required.
 
@@ -66,6 +66,11 @@ To fully align with these outcomes, the following enhancements are planned:
 * **Central-Only Uninstall Policy**: Full wipes only touch approved central locations (e.g. `~/.mcp-tools`, `~/.mcpinv`, and the Nexus PATH block). No disk scans or directory-tree climbing during uninstall.
 * **Uninstall Safety + Diagnostics**: Uninstall now prints an explicit deletion plan and requires confirmation (unless `--yes`). Added `--verbose` and `--devlog` (JSONL) with 90-day retention for diagnostics.
 * **Bootstrap Safety Policy**: Workspace detection avoids filesystem crawling (checks only `cwd` + script-sibling workspace). If a workspace `.env` is present, the installer warns about potential conflicts with the central install.
+
+### 2026-02-19 Alignment Update (v3.2.1)
+* **L1 GUI Outcome**: User can start and stop the GUI without a terminal. Double-click `Start Nexus.command` on Desktop → menu-bar icon appears → click to open Dashboard or stop.
+* **OS Visibility**: Server on/off state is visible in the macOS menu bar without opening a browser or terminal.
+* **Browser Independence**: Closing the browser tab does not stop the server — lifecycle is owned by the tray icon, not the browser.
 
 ---
 
