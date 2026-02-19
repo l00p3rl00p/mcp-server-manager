@@ -1,56 +1,54 @@
 # MCP Observer: The System Monitor (mcp-server-manager)
 
-**The Eyes of the Workforce Nexus.**
+**The visual control surface for the Workforce Nexus.**
 
-The **Observer** is a specialized tool for tracking, monitoring, and visualizing the state of your MCP ecosystem. It ensures that you always know *what* is running, *where* it is installed, and *how* healthy it is.
+The **Observer** tracks, monitors, and visualizes the state of your MCP ecosystem. In v3.2.1, it transitions from a standalone CLI tool to a persistent **System Tray App** that manages your entire server fleet.
 
 ## 🚀 Quick Start
 
-To launch the Visual Dashboard (and install dependencies if missing):
+To launch the Visual Dashboard and Tray App:
 ```bash
 ../nexus.sh
 ```
 
 **What this does:**
-1.  **Verification**: Checks system health and security flags.
-2.  **Launching**: Starts the system tray app and opens your browser.
-3.  **Desktop**: Ensures "Start Nexus.command" is on your Desktop.
+1.  **Tray Launch**: Starts `nexus_tray.py` (Indigo dot) in your menu bar (macOS) or system tray (Windows).
+2.  **Dashboard**: Opens your browser to `http://localhost:5001`.
+3.  **Bridge**: The bridge acts as the backend for the GUI and serves built React assets.
 
-> **Part of the Workforce Nexus Suite**: For full orchestration and global command setup, see the [Master README](../README.md).
+> **Master View**: For full suite orchestration, see the [Master README](../README.md).
 
 ---
 
-## 🌟 Core Capabilities
+## 🌟 Capabilities (v3.2.1)
 
-### 1. Nexus Forge (The Factory)
+### 1. System Tray Anchor
+- **Lifecycle**: GUI runs as a background service managed by the OS menu bar.
+- **Auto-Exit**: Choose "Stop & Quit" from the tray to shutdown the back-end bridge.
+- **One-Click**: Open the dashboard anytime without a terminal.
+
+### 2. Nexus Forge (V3 Engine)
 Transform any local folder or Git repository into a hardened MCP server.
-- **Portability Mandate**: Automatically generates `ATP_COMPLIANCE_GUIDE.md` for every forged server, ensuring downstream agents know how to use it safely.
-- **Async Build**: Long-running clone/build tasks happen in the background without blocking the UI.
-- **Strawberry Test**: Verifies logic fidelity before the server goes live.
+- **Portability**: Automatically generates `ATP_COMPLIANCE_GUIDE.md` for forged servers.
+- **Deterministic Wrapping**: Uses standard shebangs and absolute paths for reliability.
 
-### 2. Inventory Awareness
-Automatically scans and catalogs MCP servers in your workspace or installed centrally in `~/.mcp-tools`.
-- Tracks: Source path, Installation type (venv/docker), Config status.
-- Prevents "Ghost Servers" (forgotten processes).
+### 3. Metric Telemetry
+- **Resource HUD**: Real-time CPU/RAM/Disk stats for the host and every managed process.
+- **PID Tracking**: Dashboard cards show exact process health via `psutil`.
 
-### 3. Health & Diagnostics
-Runs deep diagnostic checks on every registered server.
-- **Connectivity**: Can the server be reached?
-- **Responsiveness**: Is it replying to JSON-RPC pings?
-- **Environment**: Are dependencies valid?
+### 4. Direct UI Bridge
+- **Port 5001**: The Flask bridge handles API requests and serves the React frontend directly from `gui/dist`.
+- **Latency-Free**: Optimized JSON responses for sub-10ms state updates.
 
-### 4. The GUI Dashboard
-Includes a built-in web dashboard (React-based) for visual management.
-- **Launch**: `mcp-observer gui`
-- **Features**: 
-  - Real-time status indicators (Green/Red).
-  - One-click server toggling.
-  - Integration with the Librarian for knowledge browsing.
-  - **Token Cost Transparency**: Visual badges for every command execution.
+---
+
+## 🔐 Safety & Governance
+- **Localhost Bound**: The API Bridge only listens on `127.0.0.1`.
+- **Noclobber**: All file operations respect the `set -o noclobber` safety mandate.
 
 ---
 
 ## 📝 Metadata
-* **Status**: Production Ready (v3.1.0)
-* **Author**: l00p3rl00p
-* **Part of**: The Nexus Workforce Suite
+* **Status**: Production Ready (v3.2.1)
+* **GUI Port**: 5001
+* **Part of**: The Workforce Nexus Suite

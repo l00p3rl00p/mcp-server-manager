@@ -5,7 +5,7 @@ import subprocess
 import sys
 import shlex
 import datetime
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from collections import deque
 import time
@@ -13,9 +13,25 @@ import time
 METRIC_HISTORY = deque(maxlen=60)
 from pathlib import Path
 
-app = Flask(__name__)
-# Restrict CORS to local dev origins only — wildcard CORS is a release blocker
+# Determine the directory where this script lives
+BASE_DIR = Path(__file__).parent.resolve()
+
+app = Flask(__name__, static_folder=str(BASE_DIR / "gui" / "dist"), static_url_path="")
 CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174"])
+
+@app.route("/")
+def serve_index():
+    """Serve the built React frontend's index.html."""
+    return send_from_directory(app.static_folder, "index.html")
+
+@app.route("/<path:path>")
+def serve_static(path):
+    """Serve assets and other static files from gui/dist."""
+    # Check if the requested path exists in static_folder
+    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    # Default to index.html for React Router compatibility
+    return send_from_directory(app.static_folder, "index.html")
 
 # Official Logging Integration
 try:
@@ -123,7 +139,9 @@ def get_logs():
             lines = f.readlines()[-100:]
             for line in lines:
                 try: logs.append(json.loads(line))
-                except: continue
+            except Exception as e:
+                if session_logger: session_logger.log("ERROR", f"Log line corruption: {str(e)}")
+                continue
         return jsonify(logs)
     except Exception as e: return jsonify({"error": str(e)}), 500
 
@@ -147,7 +165,9 @@ def get_status():
             try:
                 cmdline = ' '.join(p.info['cmdline'] or [])
                 if any(pat in cmdline for pat in patterns): return p
-            except: pass
+            except Exception as e:
+                # Silently ignore 404/connection errors for pings to avoid log bloat, but log system exceptions
+                pass
         return None
 
     librarian_proc = find_process(["mcp.py", "nexus-librarian"])
@@ -193,7 +213,9 @@ def get_status():
                         "metrics": stats,
                         "raw": s_data
                     })
-        except: pass
+        except Exception as e:
+            if session_logger: session_logger.log("ERROR", f"Inventory sync failed: {str(e)}")
+            pass
 
     # Global Metrics
     d = psutil.disk_usage('/')
@@ -218,7 +240,9 @@ def get_status():
             conn = sqlite3.connect(db_path)
             resource_count = conn.execute("SELECT count(*) FROM links").fetchone()[0]
             conn.close()
-        except: pass
+        except Exception as e:
+            if session_logger: session_logger.log("ERROR", f"Project history fetch failed: {str(e)}")
+            pass
 
     # Version Status
     version_status = "up-to-date"

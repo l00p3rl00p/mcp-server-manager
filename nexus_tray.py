@@ -14,6 +14,7 @@ Closing the browser tab does NOT stop the server.
 import threading
 import webbrowser
 import platform
+import time
 import sys
 import os
 from pathlib import Path
