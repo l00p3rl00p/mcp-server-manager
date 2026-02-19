@@ -322,57 +322,7 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Injection Modal */}
-      {injectTarget && (
-        <div className="inspector-overlay" onClick={() => setInjectTarget(null)} style={{ background: 'rgba(0,0,0,0.8)', zIndex: 3000 }}>
-          <div className="glass-card" onClick={e => e.stopPropagation()} style={{ width: '500px', animation: 'fadeIn 0.2s ease-out' }}>
-            <div style={{ paddingBottom: '16px', borderBottom: '1px solid var(--card-border)', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
-              <h3>Inject Server: {injectTarget.name}</h3>
-              <X size={20} style={{ cursor: 'pointer' }} onClick={() => setInjectTarget(null)} />
-            </div>
 
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ fontSize: '12px', color: 'var(--text-dim)', display: 'block', marginBottom: '8px' }}>CURRENT INJECTIONS</label>
-              {injectionStatus ? (
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {injectionStatus.injected_into?.length > 0 ? injectionStatus.injected_into.map((c: string) => (
-                    <span key={c} className="badge badge-success" style={{ fontSize: '11px' }}>{c}</span>
-                  )) : <span style={{ fontSize: '12px', fontStyle: 'italic', opacity: 0.6 }}>Not injected anywhere.</span>}
-                </div>
-              ) : <span className="pulse-dot pulse-blue"></span>}
-            </div>
-
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ fontSize: '12px', color: 'var(--text-dim)', display: 'block', marginBottom: '8px' }}>INJECT INTO</label>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <select className="glass-card" style={{ flex: 1, padding: '8px', background: 'rgba(0,0,0,0.3)' }} value={targetClient} onChange={e => setTargetClient(e.target.value)}>
-                  {availableClients.length > 0 ? (
-                    availableClients.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)
-                  ) : (
-                    <option value="" disabled>No supported IDEs detected</option>
-                  )}
-                </select>
-                <button className="nav-item badge-primary" style={{ background: 'var(--primary)', color: '#fff', border: 'none' }} onClick={() => {
-                  addNotification(`Injecting ${injectTarget.name} into ${targetClient}...`, 'info');
-                  fetch(API_BASE + '/nexus/run', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: `mcp-surgeon --add ${injectTarget.name} --client ${targetClient}` })
-                  }).then(r => r.json()).then(d => {
-                    if (d.success) {
-                      addNotification("Injection successful.", "success");
-                      setInjectTarget(null); // Close
-                    } else {
-                      addNotification(d.stderr || d.error, "error");
-                    }
-                  });
-                }}>
-                  Inject Now
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Content area: main + metric side panel side-by-side */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>

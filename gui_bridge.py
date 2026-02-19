@@ -9,6 +9,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from collections import deque
 import time
+__version__ = "3.3.0"
 
 METRIC_HISTORY = deque(maxlen=60)
 from pathlib import Path
