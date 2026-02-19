@@ -1,19 +1,32 @@
 servers:
-  - id: browser-agent
-    name: browser-agent
-    path: /Users/albert/Code/browser-agent
-    confidence: manual
-    status: unknown
-    transport: http
-    ports: [7450]
-    env_files: [".env"]
-    run:
-      kind: docker-compose
-      compose_file: docker-compose.yml
-      compose_service: mcp
-      workdir: /Users/albert/Code/browser-agent
-    tags: ["local", "docker"]
-    notes: ""
-    added_on: "2026-02-09T00:00:00Z"
-    last_seen: null
-    evidence: []
+- added_on: '2026-02-09T00:00:00Z'
+  confidence: manual
+  env_files:
+  - .env
+  evidence: []
+  id: browser-agent
+  last_seen: null
+  name: browser-agent
+  notes: ''
+  path: /Users/albert/Code/browser-agent
+  ports:
+  - 7450
+  run:
+    compose_file: docker-compose.yml
+    compose_service: mcp
+    kind: docker-compose
+    workdir: /Users/albert/Code/browser-agent
+  status: unknown
+  tags:
+  - local
+  - docker
+  transport: http
+- confidence: forged
+  id: test_forge_target
+  name: test_forge_target
+  path: /Users/almowplay/Developer/Github/mcp-creater-manager/test_forge_target
+  source: /Users/almowplay/Developer/Github/mcp-creater-manager/test_forge_target
+  status: ready
+  tags:
+  - forged
+  - nexus-v3

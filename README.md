@@ -17,50 +17,35 @@ python3 -m mcp_inventory.cli gui
 
 ## 🌟 Core Capabilities
 
-### 1. Inventory Awareness
+### 1. Nexus Forge (The Factory)
+Transform any local folder or Git repository into a hardened MCP server.
+- **Portability Mandate**: Automatically generates `ATP_COMPLIANCE_GUIDE.md` for every forged server, ensuring downstream agents know how to use it safely.
+- **Async Build**: Long-running clone/build tasks happen in the background without blocking the UI.
+- **Strawberry Test**: Verifies logic fidelity before the server goes live.
+
+### 2. Inventory Awareness
 Automatically scans and catalogs MCP servers in your workspace or installed centrally in `~/.mcp-tools`.
 - Tracks: Source path, Installation type (venv/docker), Config status.
 - Prevents "Ghost Servers" (forgotten processes).
 
-### 2. Health & Diagnostics
+### 3. Health & Diagnostics
 Runs deep diagnostic checks on every registered server.
 - **Connectivity**: Can the server be reached?
 - **Responsiveness**: Is it replying to JSON-RPC pings?
 - **Environment**: Are dependencies valid?
 
-### 3. The GUI Dashboard
-Includes a built-in web dashboard (Streamlit-based) for visual management.
+### 4. The GUI Dashboard
+Includes a built-in web dashboard (React-based) for visual management.
 - **Launch**: `mcp-observer gui`
 - **Features**: 
   - Real-time status indicators (Green/Red).
   - One-click server toggling.
   - Integration with the Librarian for knowledge browsing.
-
----
-
-## 🛠️ Usage
-
-### CLI Mode (Human/Agent)
-```bash
-# Scan current directory for servers
-python3 -m mcp_inventory.cli scan .
-
-# List known inventory
-python3 -m mcp_inventory.cli list
-
-# Run health check
-python3 -m mcp_inventory.cli health
-
-# Launch GUI
-python3 -m mcp_inventory.cli gui
-```
-
-### Standalone Operation
-The Observer functions independently. It does not require the full Nexus suite to be present. It can managing a single repo's servers just as well as a full industrial cluster.
+  - **Token Cost Transparency**: Visual badges for every command execution.
 
 ---
 
 ## 📝 Metadata
-* **Status**: Production Ready
+* **Status**: Production Ready (v3.1.0)
 * **Author**: l00p3rl00p
 * **Part of**: The Nexus Workforce Suite

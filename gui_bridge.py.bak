@@ -99,12 +99,10 @@ pm = ProjectManager()
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Returns the basic health status and active project context."""
     return jsonify({"status": "ok", "project": pm.active_project})
 
 @app.route('/logs', methods=['GET'])
 def get_logs():
-    """Retrieves the last 100 log entries from the session log file."""
     if not pm.log_path.exists(): return jsonify([])
     logs = []
     try:
@@ -118,12 +116,6 @@ def get_logs():
 
 @app.route('/status', methods=['GET'])
 def get_status():
-    """
-    Compiles a comprehensive system status report including:
-    - Process liveness check (Librarian, Bridge, Servers)
-    - Resource usage metrics (CPU, RAM, PID)
-    - MCP Server inventory status
-    """
     import psutil
     import yaml
     
