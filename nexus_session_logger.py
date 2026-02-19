@@ -45,9 +45,12 @@ class NexusSessionLogger:
         """Log agent's internal reasoning posture."""
         self.log("THINKING", state, suggestion=reason)
 
-    def log_command(self, cmd: str, status: str, result: Optional[str] = None):
-        """Log a system command execution."""
-        self.log("COMMAND", f"Executed: {cmd}", suggestion=f"Status: {status}", metadata={"raw_result": result})
+    def log_command(self, cmd: str, status: str, result: Optional[str] = None, tokens: Optional[Dict[str, Any]] = None):
+        """Log a system command execution with optional token usage."""
+        meta: Dict[str, Any] = {"raw_result": result}
+        if tokens:
+            meta["usage"] = tokens  # v23: persist token cost in JSONL
+        self.log("COMMAND", f"Executed: {cmd}", suggestion=f"Status: {status}", metadata=meta)
 
 if __name__ == "__main__":
     # Test execution

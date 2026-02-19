@@ -80,8 +80,8 @@ class ForgeEngine:
             print(f"⚠️  Target {target_dir} exists. Pulling latest...")
             try:
                 subprocess.run(["git", "pull"], cwd=target_dir, check=True)
-            except:
-                print("   Git pull failed. Proceeding with existing state.")
+            except Exception as e:
+                print(f"   Git pull failed ({e}). Proceeding with existing state.")
             return
 
         print(f"⬇️  Cloning {url}...")
@@ -166,7 +166,8 @@ if __name__ == "__main__":
             try:
                 with open(self.inventory_path, "r") as f:
                     inventory = yaml.safe_load(f) or {"servers": []}
-            except: pass
+            except Exception as e:
+                print(f"   ⚠️  Could not read inventory ({e}). Starting fresh.")
 
         # Update or Append
         existing = next((s for s in inventory["servers"] if s.get("id") == name), None)

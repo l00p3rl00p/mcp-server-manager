@@ -861,6 +861,7 @@ def get_links():
     except Exception as e: return jsonify({"error": str(e)}), 500
 
 @app.route('/artifacts', methods=['GET'])
+@app.route('/artifact/list', methods=['GET'])  # v16 alias — resolves 404 gap
 def get_artifacts():
     artifact_dir = pm.app_data_dir / "artifacts"
     if not artifact_dir.exists(): return jsonify([])
@@ -871,15 +872,32 @@ def get_artifacts():
     except: pass
     return jsonify(results)
 
+
 import threading
 import uuid
 
 class ForgeManager:
     """Manages asynchronous Forge tasks."""
+    MAX_TASKS = 50  # Evict oldest terminal tasks beyond this cap
+
     def __init__(self):
         self.tasks = {}
 
+    def _evict(self):
+        """Remove oldest completed/failed tasks when cap is exceeded."""
+        if len(self.tasks) < self.MAX_TASKS:
+            return
+        terminal = [
+            (tid, t) for tid, t in self.tasks.items()
+            if t["status"] in ("completed", "failed")
+        ]
+        # Sort by start_time ascending and drop oldest half
+        terminal.sort(key=lambda x: x[1].get("start_time", 0))
+        for tid, _ in terminal[: len(terminal) // 2 + 1]:
+            del self.tasks[tid]
+
     def start_task(self, source, name=None):
+        self._evict()
         task_id = str(uuid.uuid4())
         self.tasks[task_id] = {
             "id": task_id,
@@ -898,46 +916,50 @@ class ForgeManager:
         task = self.tasks[task_id]
         task["status"] = "running"
         try:
-            # Dynamically import to ensure we get the latest
-            import sys
+            import sys, io as _io
             project_root = Path(__file__).parent
             if str(project_root / "forge") not in sys.path:
                 sys.path.insert(0, str(project_root / "forge"))
-            
+
             from forge_engine import ForgeEngine
-            
-            # Initialize with the active project's inventory path
-            # We must use pm.inventory_path which is dynamically set
+
             engine = ForgeEngine(pm.app_data_dir.parent, inventory_path=pm.inventory_path)
-            
+
             task["logs"].append(f"Starting Forge for: {source}")
             task["logs"].append(f"Target Inventory: {pm.inventory_path}")
-            
-            # Capture stdout for realtime logs (mock for now as we are in thread)
-            # In v3.2 we can redirect stdout properly
-            
-            target_path = engine.forge(source, name)
-            
-            task["logs"].append(f"Forge successful.")
+
+            # Redirect stdout so ForgeEngine's print() lines flow into task logs
+            class _LogCapture(_io.TextIOBase):
+                def write(self_inner, s):
+                    if s.strip():
+                        task["logs"].append(s.rstrip())
+                    return len(s)
+                def flush(self_inner): pass
+
+            _orig_stdout = sys.stdout
+            sys.stdout = _LogCapture()
+            try:
+                target_path = engine.forge(source, name)
+            finally:
+                sys.stdout = _orig_stdout  # always restore
+
             task["logs"].append(f"Server available at: {target_path}")
-            
             task["status"] = "completed"
             task["result"] = {
                 "success": True,
                 "stdout": "\n".join(task["logs"]),
                 "server_path": str(target_path)
             }
-            
+
             if session_logger:
                 session_logger.log_command(f"FORGE: {source}", "SUCCESS", result=str(target_path))
 
         except Exception as e:
+            sys.stdout = _orig_stdout if '_orig_stdout' in dir() else sys.stdout
             task["status"] = "failed"
-            error_msg = f"ERROR: {str(e)}"
-            task["logs"].append(error_msg)
+            task["logs"].append(f"ERROR: {str(e)}")
             import traceback
             task["logs"].append(traceback.format_exc())
-            
             task["result"] = {"success": False, "error": str(e)}
             if session_logger:
                 session_logger.log("ERROR", f"Forge failed: {str(e)}")
