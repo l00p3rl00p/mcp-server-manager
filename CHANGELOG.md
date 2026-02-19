@@ -1,5 +1,22 @@
 # Changelog - MCP Observer (mcp-server-manager)
 
+## [3.2.8] - 2026-02-19
+- **Librarian Empowerment**: Added "OPEN" and "EDIT" buttons to the Librarian tab. You can now open URLs in your browser or files in your native OS handler (Folders/PDFs/etc) directly from the GUI.
+- **Native Editing**: The Librarian now supports an "EDIT" action for local files, opening them in your system's default editor.
+- **CLI Parity**: Added `--open <id>` and `--edit <id>` to the `mcp-librarian` CLI.
+- **Navigation Optimization**: Reordered the sidebar: Operations is now 3rd, prioritizing real-time system activity.
+
+## [3.2.7] - 2026-02-19
+- **Forge Persistence**: Successful forge results are now persisted in `active_context.json` and remain visible even after page refresh or app restart.
+- **IDE Integration Hardening**: Added "Google AI Antigravity" to the supported IDE list. Replaced prompt-based injection with a robust dropdown UI.
+- **Security Policy Update**: Whitelisted `python3` and `npx` in the Bridge task runner to allow the injector to function correctly.
+- **Manual Config Access**: Added an inline JSON preview for manual configuration if auto-injection is not desired.
+
+## [3.2.5] - 2026-02-19
+- **GUI Drift Protection**: Integrated a mandatory build-drift check in `nexus-verify.py`. The suite now prevents serving stale UI assets by comparing `src/` vs `dist/` timestamps.
+- **Persistent Dismissal**: Added "Dismiss All" to the Recovery Needed section. Acknowledged errors are persisted in `active_context.json` so they stay hidden across restarts.
+- **Auto-Build Standard**: `setup.sh` now ensures the GUI is built after dependencies are installed or refreshed.
+
 ## [3.2.1] - 2026-02-19
 
 ### Improvements
@@ -49,4 +66,4 @@
 - Command state persistence.
 
 ---
-*Status: Production Ready (v3.2.1)*
+*Status: Stable Release (v3.2.5)*

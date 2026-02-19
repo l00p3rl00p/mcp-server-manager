@@ -191,6 +191,11 @@ h3,
   box-shadow: 0 0 8px var(--danger);
 }
 
+.pulse-blue {
+  background: var(--primary);
+  box-shadow: 0 0 8px var(--primary);
+}
+
 /* Animation Keyframes */
 @keyframes pulse {
   0% {

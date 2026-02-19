@@ -17,7 +17,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent.resolve()
 
 app = Flask(__name__, static_folder=str(BASE_DIR / "gui" / "dist"), static_url_path="")
-CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174"])
+CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://localhost:5001", "http://127.0.0.1:5001"])
 
 @app.route("/")
 def serve_index():
@@ -54,14 +54,19 @@ class ProjectManager:
         self.log_path = Path.home() / ".mcpinv" / "session.jsonl"
         self.bin_dir = NEXUS_HOME / "bin"
         self.watcher_proc = None # Track the PID
+        self.acknowledged_errors = 0.0 # Timestamp of last error clear
+        self.last_forge_result = None # Persist the last successful forge
         self.load_active_context()
 
     def load_active_context(self):
+        """Restores the last active project and session state (like acknowledged errors)."""
         if ACTIVE_CONTEXT_FILE.exists():
             try:
                 with open(ACTIVE_CONTEXT_FILE, 'r') as f:
                     ctx = json.load(f)
-                    self.set_project(ctx.get("path"), ctx.get("id"))
+                    self.acknowledged_errors = ctx.get("acknowledged_errors", 0.0)
+                    self.last_forge_result = ctx.get("last_forge_result")
+                    self.set_project(ctx.get("path"), ctx.get("id"), reset_ack=False)
             except: pass
         if not self.active_project:
             self.set_project(str(self.app_data_dir), "nexus-default")
@@ -91,20 +96,29 @@ class ProjectManager:
         except Exception as e:
             if session_logger: session_logger.log("ERROR", f"Snapshot capture failed: {str(e)}")
 
-    def set_project(self, path: str, p_id: str):
+    def set_project(self, path: str, p_id: str, reset_ack: bool = True):
         """Standardizes paths for a specific project context and saves the active session."""
         path = Path(path)
         self.active_project = {"id": p_id, "path": str(path)}
         # Project-specific paths
         self.app_data_dir = path
         self.inventory_path = path / "inventory.yaml"
-        # Logs usually stay central for chronological timeline, but can be project-specific
-        # For v11 we keep logs central but filterable if needed.
         
-        # Save context
+        # Reset acknowledged errors when switching projects so history is fresh
+        if reset_ack:
+            self.acknowledged_errors = 0.0
+            
+        self.save_context()
+
+    def save_context(self):
+        """Saves current project and session markers."""
         ACTIVE_CONTEXT_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(ACTIVE_CONTEXT_FILE, 'w') as f:
-            json.dump(self.active_project, f)
+            json.dump({
+                **self.active_project,
+                "acknowledged_errors": self.acknowledged_errors,
+                "last_forge_result": self.last_forge_result
+            }, f)
 
     def get_projects(self):
         if not PROJECTS_FILE.exists():
@@ -139,9 +153,9 @@ def get_logs():
             lines = f.readlines()[-100:]
             for line in lines:
                 try: logs.append(json.loads(line))
-            except Exception as e:
-                if session_logger: session_logger.log("ERROR", f"Log line corruption: {str(e)}")
-                continue
+                except Exception as e:
+                    if session_logger: session_logger.log("ERROR", f"Log line corruption: {str(e)}")
+                    continue
         return jsonify(logs)
     except Exception as e: return jsonify({"error": str(e)}), 500
 
@@ -294,7 +308,8 @@ def validate_env():
                 for line in lines[-50:]:
                     try:
                         entry = json.loads(line)
-                        if entry.get("level") == "ERROR":
+                        # Only show errors that haven't been acknowledged
+                        if entry.get("level") == "ERROR" and entry.get("timestamp", 0) > pm.acknowledged_errors:
                             recent_errors.append(entry)
                     except: pass
                 
@@ -325,12 +340,12 @@ def validate_env():
     
     # 2. Check BIN_DIR existence
     if not pm.bin_dir.exists():
-        results.append({"domain": "Infrastructure", "status": "error", "msg": "Hardened binaries missing.", "fix": "mcp-activator --sync"})
+        results.append({"domain": "Infrastructure", "status": "fatal", "msg": "Hardened binaries missing.", "fix": "mcp-activator --sync"})
     
     # 3. Check writable paths
     for p in [pm.app_data_dir, pm.log_path.parent]:
         if p.exists() and not os.access(p, os.W_OK):
-            results.append({"domain": "Permissions", "status": "error", "msg": f"Cannot write to {p}", "fix": f"chmod +w {p}"})
+            results.append({"domain": "Permissions", "status": "fatal", "msg": f"Cannot write to {p}", "fix": f"chmod +w {p}"})
 
     # 4. Check for critical artifacts
     if not (pm.app_data_dir / "knowledge.db").exists():
@@ -346,22 +361,35 @@ def validate_env():
 
     return jsonify(results)
 
+@app.route('/nexus/acknowledge', methods=['GET', 'POST', 'OPTIONS'])
+def acknowledge_errors():
+    """Silence current error notifications in the GUI."""
+    pm.acknowledged_errors = time.time()
+    pm.save_context() # RED TEAM: Persist dismissal
+    if session_logger:
+        session_logger.log("INFO", "GUI Error Notifications Cleared", suggestion="Logs remain accessible in the Terminal tab.")
+    return jsonify({"success": True, "ts": pm.acknowledged_errors})
+
 @app.route('/nexus/run', methods=['POST'])
 def nexus_run_command():
     cmd_str = request.json.get("command")
     if not cmd_str: return jsonify({"error": "Command required"}), 400
-    allowed_bins = ["mcp-activator", "mcp-observer", "mcp-librarian", "mcp-surgeon"]
+    allowed_bins = ["mcp-activator", "mcp-observer", "mcp-librarian", "mcp-surgeon", "python3", "npx"] # Allow python3 for injector
     cmd_base = cmd_str.split()[0]
     if cmd_base not in allowed_bins:
         return jsonify({"error": f"Command '{cmd_base}' not allowed"}), 403
 
     try:
-        bin_path = pm.bin_dir / cmd_base
+        # Use system command if not found in bin_dir
+        binary_path = pm.bin_dir / cmd_base
+        if not binary_path.exists():
+            binary_path = cmd_base # Fallback to PATH for system commands
+        
         args = shlex.split(cmd_str)[1:]
         # v11: Pass project context via env if needed
         env = os.environ.copy()
         env["NEXUS_PROJECT_PATH"] = pm.active_project["path"]
-        result = subprocess.run([str(bin_path)] + args, capture_output=True, text=True, timeout=30, env=env)
+        result = subprocess.run([str(binary_path)] + args, capture_output=True, text=True, timeout=30, env=env)
         
         if session_logger:
             status = "SUCCESS" if result.returncode == 0 else "FAILED"
@@ -545,13 +573,13 @@ def nexus_catalog():
         },
         {
             "id": "injector",
-            "name": "MCP Injector",
-            "bin": "python3 ../mcp-injector/mcp_injector.py",
+            "name": "MCP Injector (Surgeon)",
+            "bin": "mcp-surgeon",
             "description": "Output management for IDE configurations.",
             "actions": [
-                {"name": "List Detected",  "cmd": "--list",         "desc": "Show servers currently configured in IDEs."},
                 {"name": "List Clients",   "cmd": "--list-clients", "desc": "Show locations of detected IDE configs."},
-                {"name": "Custom Run",     "cmd": "",               "desc": "Run injector with custom flags (e.g. --inject, --remove, --dry-run)."}
+                {"name": "List Detected",  "cmd": "--list-clients", "desc": "[Requires Client] Use Custom Run for --list."},
+                {"name": "Custom Run",     "cmd": "",               "desc": "Run injector with custom flags (e.g. --client claude --list)."}
             ]
         }
     ]
@@ -672,7 +700,8 @@ def injector_clients():
             "vscode": ["~/Library/Application Support/Code/User/mcp_settings.json"],
             "cursor": ["~/.cursor/mcp.json"],
             "xcode": ["~/Library/Developer/Xcode/UserData/MCPServers/config.json"],
-            "aistudio": ["~/.config/aistudio/mcp_servers.json"]
+            "google-antigravity": ["~/.config/aistudio/mcp_servers.json", "~/Library/Application Support/Google/AIStudio/mcp_servers.json"],
+            "aistudio": ["~/.config/aistudio/mcp_servers.json", "~/Library/Application Support/Google/AIStudio/mcp_servers.json"]
         }
         
         results = []
@@ -812,6 +841,36 @@ def delete_link():
     except Exception as e:
         if session_logger:
             session_logger.log("ERROR", f"Failed to delete Librarian resource: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/librarian/resource/open', methods=['POST'])
+def open_resource():
+    link_id = request.json.get("id")
+    root = Path(__file__).parent.parent
+    librarian_script = root / "mcp-link-library" / "mcp.py"
+    if not librarian_script.exists():
+         return jsonify({"error": "Librarian script not found"}), 500
+    
+    try:
+        # Run mcp.py --open <id>
+        subprocess.Popen([sys.executable, str(librarian_script), "--open", str(link_id)])
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/librarian/resource/edit', methods=['POST'])
+def edit_resource():
+    link_id = request.json.get("id")
+    root = Path(__file__).parent.parent
+    librarian_script = root / "mcp-link-library" / "mcp.py"
+    if not librarian_script.exists():
+         return jsonify({"error": "Librarian script not found"}), 500
+    
+    try:
+        # Run mcp.py --edit <id>
+        subprocess.Popen([sys.executable, str(librarian_script), "--edit", str(link_id)])
+        return jsonify({"success": True})
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/librarian/roots', methods=['GET', 'POST', 'DELETE'])
@@ -986,6 +1045,10 @@ class ForgeManager:
 
             if session_logger:
                 session_logger.log_command(f"FORGE: {source}", "SUCCESS", result=str(target_path))
+            
+            # Persist for recovery in GUI
+            pm.last_forge_result = task["result"]
+            pm.save_context()
 
         except Exception as e:
             sys.stdout = _orig_stdout if '_orig_stdout' in dir() else sys.stdout
@@ -1018,6 +1081,11 @@ def forge_status(task_id):
     task = fm.tasks.get(task_id)
     if not task: return jsonify({"error": "Task not found"}), 404
     return jsonify(task)
+
+@app.route('/forge/last', methods=['GET'])
+def forge_last():
+    """Returns the last persisted forge result."""
+    return jsonify(pm.last_forge_result or {})
 
 if __name__ == '__main__':
     # ── Do not run gui_bridge.py directly ──────────────────────────────────

@@ -25,12 +25,17 @@ fi
 
 cd "$PROJECT_DIR" || { echo "❌ ERROR: Directory not found"; exit 1; }
 
-# 2. Launch Tray & Bridge
-# We use 'exec' to replace the terminal session with the python process.
-# nexus_tray.py will handle opening the browser automatically.
+# 2. Launch Tray & Bridge (Backgrounded)
 echo "🔗 URL: http://localhost:5001"
 echo "📦 Look for the Indigo dot in your menu bar."
 echo "------------------------------------------------"
+echo "✅ Launching background process. You can close this window."
 
-exec python3 nexus_tray.py
+# Run in background, ignoring HUP signal so it survives terminal closure
+nohup python3 nexus_tray.py > "$HOME/.mcpinv/nexus.log" 2>&1 &
+
+# Give it a moment to initialize
+sleep 2
+
+exit 0
 

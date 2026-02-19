@@ -37,7 +37,7 @@ interface Notification {
  * Override via VITE_API_URL env var for staging/production deployments.
  * All fetch() calls in this file should use API_BASE — never hardcode localhost directly.
  */
-const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:5001';
+const API_BASE = (import.meta as any).env?.VITE_API_URL || "";
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -105,7 +105,8 @@ const App: React.FC = () => {
         ['librarian/watcher', (d: any) => d?.status && setWatcherStatus(d.status)],
         ['validate', setHealthIssues],
         ['project/history', setInventoryHistory],
-        ['nexus/catalog', setCommandCatalog]
+        ['nexus/catalog', setCommandCatalog],
+        ['forge/last', (d) => d && Object.keys(d).length > 0 && setForgeResult({ ...d, status: 'completed' })]
       ];
 
       await Promise.all(endpoints.map(async ([path, setter]) => {
@@ -148,6 +149,16 @@ const App: React.FC = () => {
       }
       fetchData();
     } catch (e) { addNotification(String(e), 'error'); }
+  };
+
+  const handleAcknowledge = async () => {
+    try {
+      const res = await fetch(API_BASE + '/nexus/acknowledge', { method: 'POST' });
+      if (res.ok) {
+        addNotification("Errors acknowledged and cleared from Dashboard.", "success");
+        fetchData();
+      }
+    } catch (e) { addNotification(String(e), "error"); }
   };
 
   const [opOutputs, setOpOutputs] = useState<Record<string, any>>({});
@@ -279,12 +290,22 @@ const App: React.FC = () => {
         <nav className="nav-group">
           <div className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}><LayoutDashboard size={20} /> Dashboard</div>
           <div className={`nav-item ${activeTab === 'librarian' ? 'active' : ''}`} onClick={() => setActiveTab('librarian')}><Library size={20} /> Librarian</div>
+          <div className={`nav-item ${activeTab === 'operations' ? 'active' : ''}`} onClick={() => setActiveTab('operations')} style={{ position: 'relative' }}>
+            <Activity size={20} /> Operations
+            {healthIssues.some(h => h.status === 'fatal' || h.status === 'error') && (
+              <span className="pulse-dot pulse-red" style={{ position: 'absolute', top: 12, right: 12, width: 6, height: 6 }}></span>
+            )}
+          </div>
           <div className={`nav-item ${activeTab === 'terminal' ? 'active' : ''}`} onClick={() => setActiveTab('terminal')}><Terminal size={20} /> Command Hub</div>
-          <div className={`nav-item ${activeTab === 'operations' ? 'active' : ''}`} onClick={() => setActiveTab('operations')}><Activity size={20} /> Operations</div>
           <div className={`nav-item ${activeTab === 'forge' ? 'active' : ''}`} onClick={() => setActiveTab('forge')}><Cpu size={20} /> Forge Engine</div>
         </nav>
         <div style={{ marginTop: 'auto' }} className="nav-group">
-          <div className={`nav-item ${activeTab === 'lifecycle' ? 'active' : ''}`} onClick={() => setActiveTab('lifecycle')}><Settings size={20} /> Lifecycle</div>
+          <div className={`nav-item ${activeTab === 'lifecycle' ? 'active' : ''}`} onClick={() => setActiveTab('lifecycle')} style={{ position: 'relative' }}>
+            <Settings size={20} /> Lifecycle
+            {systemStatus?.updateAvailable && (
+              <span className="pulse-dot pulse-blue" style={{ position: 'absolute', top: 12, right: 12, width: 6, height: 6 }}></span>
+            )}
+          </div>
         </div>
       </aside>
 
@@ -316,13 +337,16 @@ const App: React.FC = () => {
 
           {activeTab === 'dashboard' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              {healthIssues.filter(h => h.domain !== 'Python').length > 0 && (
-                <section className="glass-card" style={{ border: '1px solid var(--warning)', background: 'rgba(255,193,7,0.05)', animation: 'pulse 3s infinite' }}>
-                  <h3 style={{ color: 'var(--warning)', display: 'flex', gap: '10px', marginBottom: '16px' }}><AlertTriangle size={20} /> Recovery Needed</h3>
-                  {healthIssues.filter(h => h.domain !== 'Python').map((issue, i) => (
+              {healthIssues.filter(h => h.status === 'fatal').length > 0 && (
+                <section className="glass-card" style={{ border: '1px solid var(--warning)', background: 'rgba(239,68,68,0.1)', animation: 'pulse 3s infinite' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h3 style={{ color: '#ef4444', display: 'flex', gap: '10px', margin: 0 }}><AlertTriangle size={20} /> SYSTEM RECOVERY REQUIRED</h3>
+                    <button className="nav-item" style={{ fontSize: '11px', padding: '4px 12px', opacity: 0.8, position: 'relative', zIndex: 10 }} onClick={handleAcknowledge}>Acknowledge Fatal Errors</button>
+                  </div>
+                  {healthIssues.filter(h => h.status === 'fatal').map((issue, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <span><b style={{ color: 'var(--warning)' }}>[{issue.domain}]</b> {issue.msg}</span>
-                      <button className="nav-item badge-warning" style={{ fontSize: '11px', padding: '4px 12px' }}>FIX: {issue.fix}</button>
+                      <span><b style={{ color: '#ef4444' }}>[{issue.domain}]</b> {issue.msg}</span>
+                      <button className="nav-item badge-warning" style={{ fontSize: '11px', padding: '4px 12px' }}>ACTION: {issue.fix}</button>
                     </div>
                   ))}
                 </section>
@@ -497,20 +521,40 @@ const App: React.FC = () => {
                         </td>
                         <td style={{ padding: '16px' }}><span className="badge-info badge">{l.domain}</span></td>
                         <td style={{ padding: '16px', textAlign: 'right' }}>
-                          <button className="nav-item" style={{ border: 'none', color: '#ef4444', background: 'transparent' }} onClick={() => {
-                            if (confirm(`Are you sure you want to delete "${l.title}" from the knowledge base?`)) {
-                              fetch(API_BASE + '/librarian/resource/delete', {
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button className="nav-item badge-info" style={{ padding: '6px 12px', fontSize: '11px' }} onClick={() => {
+                              fetch(API_BASE + '/librarian/resource/open', {
                                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: l.id })
                               }).then(res => {
-                                if (res.ok) {
-                                  addNotification("Resource deleted.", "success");
-                                  fetchData();
-                                }
+                                if (res.ok) addNotification("Opening resource...", "info");
                               });
-                            }
-                          }} aria-label="Delete resource">
-                            <Trash2 size={18} />
-                          </button>
+                            }}>OPEN</button>
+
+                            {l.url.startsWith('file://') && (
+                              <button className="nav-item badge-secondary" style={{ padding: '6px 12px', fontSize: '11px' }} onClick={() => {
+                                fetch(API_BASE + '/librarian/resource/edit', {
+                                  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: l.id })
+                                }).then(res => {
+                                  if (res.ok) addNotification("Opening editor...", "info");
+                                });
+                              }}>EDIT</button>
+                            )}
+
+                            <button className="nav-item" style={{ border: 'none', color: '#ef4444', background: 'transparent', padding: '0 8px' }} onClick={() => {
+                              if (confirm(`Are you sure you want to delete "${l.title}" from the knowledge base?`)) {
+                                fetch(API_BASE + '/librarian/resource/delete', {
+                                  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: l.id })
+                                }).then(res => {
+                                  if (res.ok) {
+                                    addNotification("Resource deleted.", "success");
+                                    fetchData();
+                                  }
+                                });
+                              }
+                            }} aria-label="Delete resource">
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -820,24 +864,39 @@ const App: React.FC = () => {
                             Your server is ready at <code>{forgeResult.server_path}</code>.
                           </p>
 
-                          <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                            <button className="nav-item badge-success" onClick={async () => {
-                              // Fetch clients
-                              const res = await fetch(API_BASE + '/injector/clients');
-                              const clients = await res.json();
-                              const clientName = prompt(`Select client to inject (Available: ${clients.map((c: any) => c.id).join(', ')})`, 'claude');
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+                            <label style={{ fontSize: '11px', fontWeight: 600, opacity: 0.7 }}>SELECT TARGET IDE</label>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <select
+                                id="ide-selector"
+                                className="glass-card"
+                                style={{ flex: 1, padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--card-border)' }}
+                                defaultValue="claude"
+                              >
+                                <option value="claude">Claude Desktop</option>
+                                <option value="google-antigravity">Google AI Antigravity</option>
+                                <option value="aistudio">Google AI Studio</option>
+                                <option value="cursor">Cursor</option>
+                                <option value="vscode">VS Code</option>
+                                <option value="xcode">Xcode</option>
+                              </select>
+                              <button className="nav-item badge-success" onClick={async () => {
+                                const clientName = (document.getElementById('ide-selector') as HTMLSelectElement).value;
+                                const name = forgeResult.server_path.split('/').pop() || 'forged-server';
+                                const scriptPath = `${forgeResult.server_path}/mcp_server.py`;
 
-                              if (!clientName) return;
+                                // Use mcp-surgeon which is whitelisted and points to the injector
+                                const cmd = `mcp-surgeon --client ${clientName} --add --name "${name}" --command python3 --args "${scriptPath}"`;
 
-                              const name = forgeResult.server_path.split('/').pop() || 'forged-server';
-                              const scriptPath = `${forgeResult.server_path}/mcp_server.py`;
-
-                              const cmd = `python3 ../mcp-injector/mcp_injector.py --client ${clientName} --add --name "${name}" --command python3 --args "${scriptPath}"`;
-
-                              if (confirm(`Preview Command:\n\n${cmd}\n\nExecute this injection?`)) {
-                                handleRun(cmd, 'forge-inject');
-                              }
-                            }}>Configure Injection</button>
+                                if (confirm(`Inject "${name}" into ${clientName}?\n\nCommand: ${cmd}`)) {
+                                  handleRun(cmd, 'forge-inject');
+                                }
+                              }}>INJECT NOW</button>
+                            </div>
+                            <div className="glass-card" style={{ padding: '12px', background: 'rgba(0,0,0,0.2)', fontSize: '11px', fontFamily: 'monospace', marginTop: '8px' }}>
+                              <strong>Manual JSON Config:</strong><br />
+                              <pre style={{ margin: '8px 0 0', opacity: 0.8, whiteSpace: 'pre-wrap' }}>{`"${forgeResult.server_path.split('/').pop() || 'forged-server'}": {\n  "command": "python3",\n  "args": ["${forgeResult.server_path}/mcp_server.py"]\n}`}</pre>
+                            </div>
                           </div>
                         </div>
                       )}
