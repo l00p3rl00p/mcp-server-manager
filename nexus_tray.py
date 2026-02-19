@@ -79,22 +79,22 @@ def main():
     flask_thread = threading.Thread(target=_run_flask, daemon=True, name="nexus-flask")
     flask_thread.start()
 
+    print(f"🚀 Nexus GUI Bridge Starting...")
+    print(f"🔗 URL: {DASHBOARD_URL}")
+    print(f"📦 Tray: Indigo dot in menu bar")
+    
+    # Give Flask a moment to bind, then open browser immediately
+    time.sleep(1.5)
+    webbrowser.open(DASHBOARD_URL)
+
     try:
         import pystray
     except ImportError:
-        print(
-            "[nexus_tray] pystray not installed. Run: pip3 install pystray Pillow",
-            file=sys.stderr,
-        )
-        # Fall back: just open browser and block on Flask thread
-        webbrowser.open(DASHBOARD_URL)
+        print("[nexus_tray] pystray not installed. Run: pip3 install pystray Pillow", file=sys.stderr)
         flask_thread.join()
         return
 
     icon_image = _make_icon()
-    if icon_image is None:
-        print("[nexus_tray] Pillow not installed — tray icon will be blank.", file=sys.stderr)
-
     icon = pystray.Icon(
         name="Nexus MCP Bridge",
         icon=icon_image,
@@ -106,9 +106,8 @@ def main():
         ),
     )
 
-    print(f"[nexus_tray] Bridge running → {DASHBOARD_URL}")
-    print("[nexus_tray] Use the tray icon menu to stop.")
-    icon.run()   # blocks on main thread — this is correct behaviour
+    icon.run()   # blocks on main thread
+
 
 
 if __name__ == "__main__":

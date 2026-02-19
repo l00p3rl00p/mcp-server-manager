@@ -6,18 +6,15 @@ The **Observer** is a specialized tool for tracking, monitoring, and visualizing
 
 ## 🚀 Quick Start
 
-**Double-click to launch (recommended):**
-```
-~/Desktop/Start Nexus.command   ← macOS: double-click in Finder
-```
-The GUI appears in your **macOS menu bar** (indigo dot). Click it → Open Dashboard.
-Stop the server: click the menu-bar icon → **Stop & Quit**.
-Closing the browser tab does **not** stop the server.
-
-**Headless / CI only:**
+To launch the Visual Dashboard (and install dependencies if missing):
 ```bash
-NEXUS_HEADLESS=1 python3 gui_bridge.py
+../nexus.sh
 ```
+
+**What this does:**
+1.  **Verification**: Checks system health and security flags.
+2.  **Launching**: Starts the system tray app and opens your browser.
+3.  **Desktop**: Ensures "Start Nexus.command" is on your Desktop.
 
 > **Part of the Workforce Nexus Suite**: For full orchestration and global command setup, see the [Master README](../README.md).
 
