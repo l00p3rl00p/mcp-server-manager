@@ -486,12 +486,13 @@ def nexus_catalog():
         {
             "id": "observer",
             "name": "Nexus Observer",
-            "bin": "mcp-observer", 
+            "bin": "mcp-observer",
             "description": "Health Monitoring and Resource Telemetry.",
             "actions": [
-                {"name": "Health Check", "cmd": "health", "desc": "Active probe of system components."},
-                {"name": "List Servers", "cmd": "list", "desc": "Show all registered MCP servers."},
-                {"name": "Running Procs", "cmd": "running", "desc": "Check running server processes."}
+                {"name": "Health Check",  "cmd": "health",   "desc": "Active probe of system components."},
+                {"name": "List Servers",  "cmd": "list",     "desc": "Show all registered MCP servers."},
+                {"name": "Running Procs", "cmd": "running",  "desc": "Check running server processes."},
+                {"name": "Custom Run",    "cmd": "",         "desc": "Run observer with custom flags (e.g. --verbose, --export)."}
             ]
         },
         {
@@ -500,9 +501,9 @@ def nexus_catalog():
             "bin": "mcp-activator",
             "description": "Installer and synchronization engine.",
             "actions": [
-                {"name": "Sync Suite", "cmd": "--sync", "desc": "Updates all Nexus components to match local source."},
-                {"name": "Repair Suite", "cmd": "--repair", "desc": "Fixes missing dependencies and permissions."},
-                {"name": "Custom Run", "cmd": "", "desc": "Run with custom flags (e.g. --lite, --verbose)."}
+                {"name": "Sync Suite",    "cmd": "--sync",   "desc": "Updates all Nexus components to match local source."},
+                {"name": "Repair Suite",  "cmd": "--repair", "desc": "Fixes missing dependencies and permissions."},
+                {"name": "Custom Run",    "cmd": "",         "desc": "Run activator with custom flags (e.g. --lite, --permanent)."}
             ]
         },
         {
@@ -511,9 +512,10 @@ def nexus_catalog():
             "bin": "mcp-librarian",
             "description": "Knowledge Base and Resource Manager.",
             "actions": [
-                {"name": "Index Suite", "cmd": "--index-suite", "desc": "Scan Observer/Injector for discovery."},
-                {"name": "Add Resource", "cmd": "--add", "desc": "Index a new URL.", "arg": "url"},
-                {"name": "Start Watcher", "cmd": "--watch", "desc": "Activate real-time file monitoring."}
+                {"name": "Index Suite",    "cmd": "--index-suite", "desc": "Scan Observer/Injector for discovery."},
+                {"name": "Add Resource",   "cmd": "--add",         "desc": "Index a new URL.", "arg": "url"},
+                {"name": "Start Watcher",  "cmd": "--watch",       "desc": "Activate real-time file monitoring."},
+                {"name": "Custom Run",     "cmd": "",              "desc": "Run librarian with custom flags (e.g. --search, --prune)."}
             ]
         },
         {
@@ -522,8 +524,9 @@ def nexus_catalog():
             "bin": "python3 ../mcp-injector/mcp_injector.py",
             "description": "Output management for IDE configurations.",
             "actions": [
-                {"name": "List Detected", "cmd": "--list", "desc": "Show servers currently configured in IDEs."},
-                {"name": "List Clients", "cmd": "--list-clients", "desc": "Show locations of detected IDE configs."}
+                {"name": "List Detected",  "cmd": "--list",         "desc": "Show servers currently configured in IDEs."},
+                {"name": "List Clients",   "cmd": "--list-clients", "desc": "Show locations of detected IDE configs."},
+                {"name": "Custom Run",     "cmd": "",               "desc": "Run injector with custom flags (e.g. --inject, --remove, --dry-run)."}
             ]
         }
     ]
