@@ -52,9 +52,9 @@ def _run_flask():
     """Import and start the Flask app from gui_bridge.py."""
     try:
         # Import the 'app' object that gui_bridge.py already defines
-        from gui_bridge import app
-        # host=127.0.0.1 — only reachable from localhost (safer than 0.0.0.0)
-        app.run(host="127.0.0.1", port=PORT, debug=False, use_reloader=False)
+        if session_logger:
+            session_logger.log("LIFECYCLE", "System Tray GUI Started", suggestion="Dashboard now available at http://localhost:5001")
+        app.run(host='127.0.0.1', port=5001, debug=False, use_reloader=False)
     except Exception as exc:
         # Log to stderr; don't crash the tray
         print(f"[nexus_tray] Flask error: {exc}", file=sys.stderr)

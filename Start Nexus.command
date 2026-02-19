@@ -17,9 +17,13 @@ osascript -e 'display notification "Launching Dashboard..." with title "Workforc
 echo "🚀 Starting Workforce Nexus..."
 echo "📍 Project: $PROJECT_DIR"
 
-# 1. Activate Environment
-if [ -d "$PROJECT_DIR/.venv" ]; then
-    echo "🐍 Using Virtual Environment"
+# 1. Activate Environment (Central or Local)
+NEXUS_VENV="$HOME/.mcp-tools/.venv"
+if [ -f "$NEXUS_VENV/bin/activate" ]; then
+    echo "🐍 Using Central Virtual Environment"
+    source "$NEXUS_VENV/bin/activate"
+elif [ -d "$PROJECT_DIR/.venv" ]; then
+    echo "🐍 Using Local Virtual Environment"
     source "$PROJECT_DIR/.venv/bin/activate"
 fi
 
