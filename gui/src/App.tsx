@@ -96,6 +96,15 @@ const App: React.FC = () => {
   const [availableClients, setAvailableClients] = useState<string[]>([]);
   const [pendingServerAction, setPendingServerAction] = useState<Record<string, string>>({});
   const [pythonInfo, setPythonInfo] = useState<any>(null);
+  const [purgeModalOpen, setPurgeModalOpen] = useState(false);
+  const [purgeConfirmText, setPurgeConfirmText] = useState("");
+  const [purgeOptions, setPurgeOptions] = useState({
+    purge_data: true,
+    kill_venv: true,
+    detach_clients: true,
+    remove_path_block: true,
+    remove_wrappers: true,
+  });
 
   const splitCmd = (cmd: string): string[] => {
     const m = cmd.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
@@ -1425,18 +1434,249 @@ const App: React.FC = () => {
               <div className="glass-card" style={{ border: '1px solid #ef4444', background: 'rgba(239, 68, 68, 0.05)', padding: '24px' }}>
                 <h3 style={{ color: '#ef4444', marginBottom: '8px' }}>Critical Maintenance</h3>
                 <p style={{ fontSize: '13px', color: 'var(--text-dim)', marginBottom: '24px' }}>FACTORY RESET: This action will permanently remove all Nexus binaries and data.</p>
-                <button className="nav-item" style={{ borderColor: '#ef4444', color: '#ef4444', width: '100%', padding: '14px', fontWeight: 700 }} onClick={() => {
-                  if (confirm("UNINSTALL everything?")) {
-                    addNotification("Uninstall sequence started...", "error");
-                    fetch(API_BASE + '/system/uninstall', { method: 'POST' }).then(res => {
-                      if (res.ok) window.location.reload();
+                <button
+                  className="nav-item"
+                  style={{ borderColor: '#ef4444', color: '#ef4444', width: '100%', padding: '14px', fontWeight: 700 }}
+                  onClick={() => {
+                    setPurgeConfirmText("");
+                    setPurgeOptions({
+                      purge_data: true,
+                      kill_venv: true,
+                      detach_clients: true,
+                      remove_path_block: true,
+                      remove_wrappers: true,
                     });
-                  }
-                }}>PURGE ENTIRE SUITE</button>
+                    setPurgeModalOpen(true);
+                  }}
+                >
+                  PURGE / FACTORY RESET…
+                </button>
               </div>
             </div>
           )}
         </main>
+
+        {purgeModalOpen && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setPurgeModalOpen(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.65)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '24px',
+              zIndex: 9999,
+              backdropFilter: 'blur(6px)',
+            }}
+          >
+            <div
+              className="glass-card"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: 'min(720px, 96vw)',
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                background: 'rgba(10, 10, 18, 0.92)',
+                padding: '22px',
+                borderRadius: '14px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                <div>
+                  <h3 style={{ margin: 0, color: '#ef4444' }}>Factory Reset</h3>
+                  <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--text-dim)' }}>
+                    Guided uninstall. Choose what to remove, then confirm.
+                  </p>
+                </div>
+                <button className="nav-item" onClick={() => setPurgeModalOpen(false)} style={{ padding: '6px 10px' }}>
+                  Close
+                </button>
+              </div>
+
+              <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
+                <div className="glass-card" style={{ padding: '12px', background: 'rgba(255,255,255,0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <b style={{ fontSize: '12px' }}>Preset</b>
+                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' }}>
+                        Full wipe = “new user” reset: data + environments + client detach + PATH cleanup.
+                      </div>
+                    </div>
+                    <button
+                      className="nav-item"
+                      style={{ borderColor: 'rgba(239,68,68,0.6)', color: '#ef4444' }}
+                      onClick={() =>
+                        setPurgeOptions({
+                          purge_data: true,
+                          kill_venv: true,
+                          detach_clients: true,
+                          remove_path_block: true,
+                          remove_wrappers: true,
+                        })
+                      }
+                    >
+                      Full wipe
+                    </button>
+                  </div>
+                </div>
+
+                <div className="glass-card" style={{ padding: '14px', background: 'rgba(255,255,255,0.02)' }}>
+                  <b style={{ fontSize: '12px' }}>What to remove</b>
+                  <div style={{ marginTop: '10px', display: 'grid', gap: '10px' }}>
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.purge_data}
+                        onChange={(e) => setPurgeOptions((o) => ({ ...o, purge_data: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Wipe central Nexus data</b> <span style={{ opacity: 0.7 }}>(recommended for clean reinstall)</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Deletes <code>~/.mcp-tools</code> (servers, binaries, GUI assets) and <code>~/.mcpinv</code> (state/logs).
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', opacity: purgeOptions.purge_data ? 1 : 0.6 }}>
+                      <input
+                        type="checkbox"
+                        disabled={!purgeOptions.purge_data}
+                        checked={purgeOptions.kill_venv}
+                        onChange={(e) => setPurgeOptions((o) => ({ ...o, kill_venv: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Delete environments</b> <span style={{ opacity: 0.7 }}>(slow to rebuild)</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Removes <code>~/.mcp-tools/.venv</code> and any suite-managed runtime installs inside <code>~/.mcp-tools</code>.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.detach_clients}
+                        onChange={(e) => setPurgeOptions((o) => ({ ...o, detach_clients: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Detach from IDE clients</b> <span style={{ opacity: 0.7 }}>(Claude/Codex/Xcode)</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Removes suite server entries from detected client config files (best-effort, with backups).
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.remove_path_block}
+                        onChange={(e) => setPurgeOptions((o) => ({ ...o, remove_path_block: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Remove PATH block</b>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Removes the Nexus-managed shell snippet from <code>~/.zshrc</code> / <code>~/.bashrc</code> that adds <code>~/.mcp-tools/bin</code> to your PATH.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.remove_wrappers}
+                        onChange={(e) => setPurgeOptions((o) => ({ ...o, remove_wrappers: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Remove PATH wrappers</b>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Wrapper scripts are tiny launchers in <code>~/.local/bin</code> (e.g., <code>mcp-surgeon</code>) that forward to the real suite binaries. They let commands work “from anywhere”.
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="glass-card" style={{ padding: '14px', background: 'rgba(255,255,255,0.02)' }}>
+                  <b style={{ fontSize: '12px' }}>Confirm</b>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '6px' }}>
+                    Type <code>PURGE</code> to enable the reset button.
+                  </div>
+                  <input
+                    value={purgeConfirmText}
+                    onChange={(e) => setPurgeConfirmText(e.target.value)}
+                    placeholder="Type PURGE"
+                    style={{
+                      marginTop: '10px',
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      background: 'rgba(0,0,0,0.25)',
+                      color: 'var(--text)',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '14px' }}>
+                <button className="nav-item" onClick={() => setPurgeModalOpen(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="nav-item"
+                  disabled={purgeConfirmText.trim().toUpperCase() !== "PURGE"}
+                  style={{
+                    borderColor: '#ef4444',
+                    color: '#ef4444',
+                    opacity: purgeConfirmText.trim().toUpperCase() !== "PURGE" ? 0.55 : 1,
+                    cursor: purgeConfirmText.trim().toUpperCase() !== "PURGE" ? 'not-allowed' : 'pointer',
+                  }}
+                  onClick={async () => {
+                    try {
+                      addNotification("Factory reset started...", "error");
+                      const res = await fetch(API_BASE + '/system/uninstall', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(purgeOptions),
+                      });
+                      const d = await res.json().catch(() => ({}));
+                      if (!res.ok || !d?.success) {
+                        addNotification(d?.error || d?.stderr || "Factory reset failed", "error");
+                        return;
+                      }
+                      addNotification("Factory reset complete. Reloading...", "success");
+                      setPurgeModalOpen(false);
+                      setTimeout(() => window.location.reload(), 750);
+                    } catch (e) {
+                      addNotification(String(e), "error");
+                    }
+                  }}
+                >
+                  Confirm reset
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* True side panel — sibling of main, slides in from the right */}
         <div className={`metric-side-panel ${metricPanelOpen ? 'open' : ''}`}>

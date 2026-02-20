@@ -1426,7 +1426,26 @@ def system_uninstall():
         if not uninstaller.exists(): return jsonify({"error": "Uninstaller not found"}), 404
         if session_logger:
             session_logger.log("COMMAND", "Factory Reset Initiated", suggestion="Purging all suite data and settings.")
-        result = subprocess.run([sys.executable, str(uninstaller), "--yes", "--purge-data", "--kill-venv"], capture_output=True, text=True, timeout=60)
+        payload = request.json or {}
+        purge_data = bool(payload.get("purge_data", True))
+        kill_venv = bool(payload.get("kill_venv", True))
+        detach_clients = bool(payload.get("detach_clients", False))
+        remove_path_block = bool(payload.get("remove_path_block", False))
+        remove_wrappers = bool(payload.get("remove_wrappers", False))
+
+        cmd = [sys.executable, str(uninstaller), "--yes"]
+        if purge_data:
+            cmd.append("--purge-data")
+        if kill_venv:
+            cmd.append("--kill-venv")
+        if detach_clients:
+            cmd.append("--detach-clients")
+        if remove_path_block:
+            cmd.append("--remove-path-block")
+        if remove_wrappers:
+            cmd.append("--remove-wrappers")
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         return jsonify({"success": result.returncode == 0, "stdout": result.stdout, "stderr": result.stderr})
     except Exception as e:
         if session_logger:
