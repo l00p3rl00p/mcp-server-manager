@@ -237,6 +237,27 @@ class TestUiCallChains(unittest.TestCase):
         self.assertIn("--remove-path-block", argv)
         self.assertIn("--remove-wrappers", argv)
 
+    def test_system_uninstall_dry_run_passes_flag(self):
+        gb = self.gui_bridge
+
+        with patch.object(gb.Path, "exists", return_value=True), patch.object(gb.subprocess, "run") as run_mock:
+            run_mock.return_value = MagicMock(returncode=0, stdout="plan", stderr="")
+            res = self.client.post(
+                "/system/uninstall",
+                json={
+                    "purge_data": True,
+                    "kill_venv": True,
+                    "dry_run": True,
+                },
+            )
+
+        self.assertEqual(res.status_code, 200)
+        payload = res.get_json()
+        self.assertTrue(payload.get("success"))
+
+        argv = run_mock.call_args[0][0]
+        self.assertIn("--dry-run", argv)
+
     def test_system_update_python_uses_editable_install_when_pyproject_present(self):
         gb = self.gui_bridge
 

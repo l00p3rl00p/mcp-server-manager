@@ -98,6 +98,8 @@ const App: React.FC = () => {
   const [pythonInfo, setPythonInfo] = useState<any>(null);
   const [purgeModalOpen, setPurgeModalOpen] = useState(false);
   const [purgeConfirmText, setPurgeConfirmText] = useState("");
+  const [purgePreview, setPurgePreview] = useState<{ ok: boolean; stdout: string; stderr: string } | null>(null);
+  const [purgePreviewLoading, setPurgePreviewLoading] = useState(false);
   const [purgeOptions, setPurgeOptions] = useState({
     purge_data: true,
     kill_venv: true,
@@ -1439,6 +1441,7 @@ const App: React.FC = () => {
                   style={{ borderColor: '#ef4444', color: '#ef4444', width: '100%', padding: '14px', fontWeight: 700 }}
                   onClick={() => {
                     setPurgeConfirmText("");
+                    setPurgePreview(null);
                     setPurgeOptions({
                       purge_data: true,
                       kill_venv: true,
@@ -1634,6 +1637,69 @@ const App: React.FC = () => {
                       outline: 'none',
                     }}
                   />
+                </div>
+
+                <div className="glass-card" style={{ padding: '14px', background: 'rgba(255,255,255,0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                    <div>
+                      <b style={{ fontSize: '12px' }}>Preview plan (recommended)</b>
+                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' }}>
+                        Runs a dry-run: shows exactly what would be removed, without deleting anything.
+                      </div>
+                    </div>
+                    <button
+                      className="nav-item"
+                      disabled={purgePreviewLoading}
+                      onClick={async () => {
+                        try {
+                          setPurgePreview(null);
+                          setPurgePreviewLoading(true);
+                          const res = await fetch(API_BASE + '/system/uninstall', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ...purgeOptions, dry_run: true }),
+                          });
+                          const d = await res.json().catch(() => ({}));
+                          const ok = !!d?.success;
+                          setPurgePreview({ ok, stdout: String(d?.stdout || ''), stderr: String(d?.stderr || d?.error || '') });
+                          addNotification(ok ? "Preview generated." : "Preview failed.", ok ? "success" : "error");
+                        } catch (e) {
+                          setPurgePreview({ ok: false, stdout: "", stderr: String(e) });
+                          addNotification(String(e), "error");
+                        } finally {
+                          setPurgePreviewLoading(false);
+                        }
+                      }}
+                      style={{ padding: '8px 12px' }}
+                    >
+                      {purgePreviewLoading ? "Generating…" : "Preview"}
+                    </button>
+                  </div>
+
+                  {purgePreview && (
+                    <div style={{ marginTop: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span className={`badge ${purgePreview.ok ? 'badge-success' : 'badge-danger'}`}>
+                          {purgePreview.ok ? 'dry-run ok' : 'dry-run failed'}
+                        </span>
+                        <button
+                          className="nav-item"
+                          onClick={() => {
+                            const text = [purgePreview.stdout, purgePreview.stderr].filter(Boolean).join("\n");
+                            navigator.clipboard?.writeText(text);
+                            addNotification("Copied preview output.", "success");
+                          }}
+                          style={{ padding: '6px 10px' }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <pre style={{ marginTop: '10px', maxHeight: '220px', overflow: 'auto', padding: '12px', borderRadius: '10px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.08)', fontSize: '11px', whiteSpace: 'pre-wrap' }}>
+                        {(purgePreview.stdout || "").trim() || "(no stdout)"}
+                        {purgePreview.stderr ? `\n\n[stderr]\n${purgePreview.stderr.trim()}` : ""}
+                      </pre>
+                    </div>
+                  )}
                 </div>
               </div>
 

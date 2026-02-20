@@ -1432,6 +1432,7 @@ def system_uninstall():
         detach_clients = bool(payload.get("detach_clients", False))
         remove_path_block = bool(payload.get("remove_path_block", False))
         remove_wrappers = bool(payload.get("remove_wrappers", False))
+        dry_run = bool(payload.get("dry_run", False))
 
         cmd = [sys.executable, str(uninstaller), "--yes"]
         if purge_data:
@@ -1444,6 +1445,8 @@ def system_uninstall():
             cmd.append("--remove-path-block")
         if remove_wrappers:
             cmd.append("--remove-wrappers")
+        if dry_run:
+            cmd.append("--dry-run")
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         return jsonify({"success": result.returncode == 0, "stdout": result.stdout, "stderr": result.stderr})
