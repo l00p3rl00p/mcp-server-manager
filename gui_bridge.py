@@ -1874,7 +1874,6 @@ def get_artifacts():
     except: pass
     return jsonify(results)
 
-
 import threading
 import uuid
 

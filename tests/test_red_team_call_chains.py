@@ -157,6 +157,33 @@ class TestRedTeamCallChains(unittest.TestCase):
         self.assertEqual(payload.get("efficiency_gain"), "PARALLEL_REAL_EXECUTION")
         self.assertEqual(wrapper_obj.call.call_count, 2)
 
+    def test_os_pick_folder_returns_selected_path(self):
+        gb = self.gui_bridge
+
+        fake_tk = types.ModuleType("tkinter")
+        fake_dialog = types.ModuleType("tkinter.filedialog")
+
+        class _Root:
+            def withdraw(self):  # pragma: no cover
+                return None
+
+            def attributes(self, *args, **kwargs):  # pragma: no cover
+                return None
+
+            def destroy(self):  # pragma: no cover
+                return None
+
+        fake_tk.Tk = _Root
+        fake_dialog.askdirectory = MagicMock(return_value="/tmp/selected")
+
+        with patch.dict(sys.modules, {"tkinter": fake_tk, "tkinter.filedialog": fake_dialog}):
+            res = self.client.post("/os/pick_folder", json={})
+
+        self.assertEqual(res.status_code, 200)
+        payload = res.get_json()
+        self.assertTrue(payload.get("success"))
+        self.assertEqual(payload.get("path"), "/tmp/selected")
+
 
 if __name__ == "__main__":
     unittest.main()

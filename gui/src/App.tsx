@@ -42,6 +42,7 @@ const API_BASE = (import.meta as any).env?.VITE_API_URL || "";
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [logViewer, setLogViewer] = useState<{ serverId: string; data: any } | null>(null);
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
   const [metricPanelOpen, setMetricPanelOpen] = useState(false);
 
@@ -95,6 +96,35 @@ const App: React.FC = () => {
   const [availableClients, setAvailableClients] = useState<string[]>([]);
   const [pendingServerAction, setPendingServerAction] = useState<Record<string, string>>({});
 
+  const splitCmd = (cmd: string): string[] => {
+    const m = cmd.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
+    return m.map(x => x.replace(/^"(.*)"$/, '$1')).filter(Boolean);
+  };
+
+  const buildInjectionCommand = (s: any, client: string): string | null => {
+    const startCmd = (s?.raw?.run?.start_cmd || '').toString();
+    if (!startCmd) return null;
+    const parts = splitCmd(startCmd);
+    if (parts.length < 1) return null;
+
+    const command = parts[0];
+    let args = parts.slice(1);
+
+    // If forged inventory uses `python ... mcp_server.py`, make the script path absolute so the client can run it.
+    try {
+      if (args.length >= 1 && args[0] === 'mcp_server.py' && s?.raw?.path) {
+        const base = (s.raw.path || '').toString().replace(/\/+$/, '');
+        args = [`${base}/mcp_server.py`, ...args.slice(1)];
+      }
+    } catch { }
+
+    const q = (x: string) => `"${(x || '').replace(/"/g, '\\"')}"`;
+    const argStr = args.map(a => q(a)).join(' ');
+
+    // Deterministic surgeon add: inject exactly what's in inventory (no templates, no guessing).
+    return `mcp-surgeon --client ${client} --add --name ${q(s.id)} --command ${q(command)}${args.length ? ` --args ${argStr}` : ''}`;
+  };
+
   // Terminal Filter State
   const [terminalFilter, setTerminalFilter] = useState('');
   const [terminalLevel, setTerminalLevel] = useState('ALL');
@@ -108,6 +138,17 @@ const App: React.FC = () => {
     setNotifications(prev => [...prev, { id, type, message }]);
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 5000);
   }, []);
+
+  const openLastStartLog = async (serverId: string) => {
+    try {
+      const res = await fetch(API_BASE + `/server/logs/${encodeURIComponent(serverId)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No logs found');
+      setLogViewer({ serverId, data });
+    } catch (e: any) {
+      addNotification(`Log viewer failed: ${e.message || String(e)}`, 'error');
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -309,6 +350,42 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {logViewer && (
+        <div className="inspector-overlay" onClick={() => setLogViewer(null)} style={{ background: 'rgba(0,0,0,0.5)', zIndex: 3100, justifyContent: 'flex-end', alignItems: 'flex-end' }}>
+          <div className="glass-card" onClick={e => e.stopPropagation()} style={{
+            width: '720px', height: '100vh',
+            borderLeft: '1px solid var(--primary)',
+            background: 'rgba(10, 10, 20, 0.95)',
+            display: 'flex', flexDirection: 'column',
+            animation: 'slideInRight 0.3s ease-out',
+            borderRadius: '0'
+          }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
+                <Terminal size={16} /> Last Start Log: {logViewer.serverId}
+              </h3>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <button className="nav-item" style={{ padding: '6px 10px', fontSize: '11px' }} onClick={() => openLastStartLog(logViewer.serverId)} title="Refresh">Refresh</button>
+                <X size={20} style={{ cursor: 'pointer' }} onClick={() => setLogViewer(null)} />
+              </div>
+            </div>
+            <div style={{ padding: '10px 20px', fontSize: '11px', opacity: 0.7, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Path: <code>{logViewer.data?.log_path || '(unknown)'}</code></span>
+                <span>MTime: {logViewer.data?.mtime ? new Date(logViewer.data.mtime * 1000).toLocaleString() : '(unknown)'}</span>
+              </div>
+            </div>
+            <pre style={{
+              padding: '16px 20px', overflow: 'auto', flex: 1,
+              fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11px',
+              color: '#e2e8f0', whiteSpace: 'pre-wrap', margin: 0
+            }}>
+              {(logViewer.data?.lines || []).join('\n')}
+            </pre>
+          </div>
+        </div>
+      )}
+
       <aside className="sidebar">
         <div className="brand" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('dashboard')}><ShieldCheck size={32} /> <span>Nexus</span></div>
         <nav className="nav-group">
@@ -493,7 +570,7 @@ const App: React.FC = () => {
                             </button>
 
                             {/* Last Start Log */}
-                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => window.open(`${API_BASE}/server/logs/${s.id}/view`, '_blank')} title="View last start log">
+                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => openLastStartLog(s.id)} title="View last start log">
                               <Terminal size={18} />
                             </button>
 
@@ -557,9 +634,14 @@ const App: React.FC = () => {
                                 </select>
                                 <button className="nav-item badge-primary" style={{ padding: '8px 16px', fontSize: '12px' }} onClick={() => {
                                   addNotification(`Injecting ${s.name} into ${targetClient}...`, 'info');
+                                  const cmd = buildInjectionCommand(s, targetClient);
+                                  if (!cmd) {
+                                    addNotification("Injection failed: missing start command in inventory.", "error");
+                                    return;
+                                  }
                                   fetch(API_BASE + '/nexus/run', {
                                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ command: `mcp-surgeon --add ${s.name} --client ${targetClient}` })
+                                    body: JSON.stringify({ command: cmd })
                                   }).then(r => r.json()).then(d => {
                                     if (d.success) {
                                       addNotification("Injection successful.", "success");
@@ -625,6 +707,7 @@ const App: React.FC = () => {
                               ? (pendingServerAction[s.id] === 'start' ? 'Starting…' : 'Stopping…')
                               : (s.status === 'online' ? 'Stop' : 'Start')}
                           </button>
+                          <button className="nav-item" style={{ padding: '4px 8px' }} onClick={() => openLastStartLog(s.id)} title="View last start log"><Terminal size={14} /></button>
                           <button className="nav-item" style={{ padding: '4px 8px' }} onClick={() => setSelectedItem(s.raw)} title="Inspect"><Search size={14} /></button>
                           {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager', 'nexus-librarian'].includes(s.id) ? (
                             <>
@@ -931,14 +1014,38 @@ const App: React.FC = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <label style={{ fontSize: '13px', fontWeight: 600, opacity: 0.7 }}>Source Path or Git URL</label>
-                    <input
-                      className="glass-card"
-                      style={{ width: '100%', padding: '14px 18px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--card-border)', color: 'var(--text-main)' }}
-                      placeholder="e.g. /Users/name/my-tool or https://github.com/user/repo"
-                      value={forgeSource}
-                      onChange={e => setForgeSource(e.target.value)}
-                      disabled={isForging}
-                    />
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <input
+                        className="glass-card"
+                        style={{ flex: 1, padding: '14px 18px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--card-border)', color: 'var(--text-main)' }}
+                        placeholder="e.g. /Users/name/my-tool or https://github.com/user/repo"
+                        value={forgeSource}
+                        onChange={e => setForgeSource(e.target.value)}
+                        disabled={isForging}
+                      />
+                      <button
+                        className="nav-item"
+                        style={{ padding: '0 14px', borderColor: 'rgba(59,130,246,0.6)', color: '#3b82f6' }}
+                        disabled={isForging}
+                        onClick={async () => {
+                          addNotification("Opening folder picker...", "info");
+                          try {
+                            const res = await fetch(API_BASE + '/os/pick_folder', { method: 'POST' });
+                            const d = await res.json();
+                            if (d?.success && d?.path) {
+                              setForgeSource(d.path);
+                              addNotification("Folder selected.", "success");
+                            } else {
+                              addNotification(d?.error || "Folder picker failed.", "error");
+                            }
+                          } catch (e) {
+                            addNotification(String(e), "error");
+                          }
+                        }}
+                      >
+                        Browse…
+                      </button>
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
