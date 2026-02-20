@@ -18,6 +18,9 @@ METRIC_HISTORY = deque(maxlen=60)
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
+import yaml
+
+from runtime_manager import ManagedPython, choose_managed_python_at_least, list_managed_pythons
 
 # Determine the directory where this script lives
 BASE_DIR = Path(__file__).parent.resolve()
@@ -152,7 +155,9 @@ class ProjectManager:
                     if "nexus-librarian" in cmd or "mcp-librarian" in cmd:
                         librarian_running = True
                         break
-                except: pass
+                except Exception:
+                    # Best-effort process inspection; permission/race failures are non-fatal.
+                    continue
             
             if not librarian_running:
                 librarian_bin = self.bin_dir / "mcp-librarian"
@@ -176,7 +181,9 @@ class ProjectManager:
                     self.acknowledged_errors = ctx.get("acknowledged_errors", 0.0)
                     self.last_forge_result = ctx.get("last_forge_result")
                     self.set_project(ctx.get("path"), ctx.get("id"), reset_ack=False)
-            except: pass
+            except Exception as e:
+                if session_logger:
+                    session_logger.log("WARNING", f"Failed to load active context: {e}")
         if not self.active_project:
             self.set_project(str(self.app_data_dir), "nexus-default")
 
@@ -195,13 +202,16 @@ class ProjectManager:
             # Copy file
             import shutil
             shutil.copy2(self.inventory_path, target_file)
-            
+
             # Prune old snapshots (keep last 10)
             snaps = sorted(snapshot_dir.glob("inventory_*.yaml"))
             while len(snaps) > 10:
                 oldest = snaps.pop(0)
-                try: oldest.unlink()
-                except: pass
+                try:
+                    oldest.unlink()
+                except Exception as e:
+                    if session_logger:
+                        session_logger.log("WARNING", f"Failed to prune snapshot {oldest.name}: {e}")
         except Exception as e:
             if session_logger: session_logger.log("ERROR", f"Snapshot capture failed: {str(e)}")
 
@@ -238,7 +248,6 @@ class ProjectManager:
             return json.load(f)
 
     def get_inventory(self):
-        import yaml
         if not self.inventory_path.exists(): return {"servers": []}
         try:
             with open(self.inventory_path, 'r') as f:
@@ -463,7 +472,7 @@ def _resolve_server_run(target: Dict[str, Any]) -> Tuple[list[str], Optional[str
         cwd_path
         and len(argv) >= 2
         and argv[0].endswith("python3")
-        and argv[1] == "mcp_server.py"
+        and Path(str(argv[1])).name == "mcp_server.py"
         and (cwd_path / "pyproject.toml").exists()
     ):
         pyproject = cwd_path / "pyproject.toml"
@@ -488,6 +497,14 @@ def _forged_entrypoint_needs_repair(entrypoint: Path) -> bool:
         if not entrypoint.exists() or not entrypoint.is_file():
             return False
         txt = entrypoint.read_text(encoding="utf-8", errors="ignore")
+        # If the file doesn't even compile, it can't be safely executed as an MCP-stdio server.
+        # This catches historical forge bugs where `"\n"` was written as a literal newline inside
+        # a Python string, producing a SyntaxError at runtime.
+        try:
+            compile(txt, str(entrypoint), "exec")
+        except SyntaxError:
+            return True
+
         return ("MCP Server Ready" in txt) or ("Nexus-Forged MCP Server Ready" in txt) or ("print(\"MCP Server" in txt)
     except Exception:
         return False
@@ -503,7 +520,9 @@ def _repair_forged_entrypoint(entrypoint: Path, server_name: str) -> bool:
         if entrypoint.exists() and not _forged_entrypoint_needs_repair(entrypoint):
             return True
 
-        content = f"""# Baseline MCP Server (Repaired)
+        # NOTE: This is intentionally not an f-string because the generated code itself must not
+        # contain accidental outer-string interpolation (e.g., "{name}") which would raise here.
+        content = """# Baseline MCP Server (Repaired)
 \"\"\"
 MCP Server: {server_name}
 Repaired by Nexus Server Manager to be MCP-stdio compliant.
@@ -516,7 +535,7 @@ import time
 from typing import Any, Dict, Optional
 
 
-SERVER_NAME = {server_name!r}
+SERVER_NAME = {server_name_repr}
 SERVER_VERSION = "0.0.1-forged"
 
 
@@ -565,10 +584,10 @@ def handle_request(request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             name = (params.get("name") or "").strip()
             if name == "ping":
                 return _ok(msg_id, {{"ok": True, "ts": time.time(), "server": SERVER_NAME}})
-            return _err(msg_id, -32601, f"Unknown tool: {name}")
-        return _err(msg_id, -32601, f"Unknown method: {method}")
+            return _err(msg_id, -32601, "Unknown tool: " + str(name))
+        return _err(msg_id, -32601, "Unknown method: " + str(method))
     except Exception as e:
-        return _err(msg_id, -32000, f"Server error: {e}")
+        return _err(msg_id, -32000, "Server error: " + str(e))
 
 
 def main() -> None:
@@ -589,6 +608,7 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 """
+        content = content.format(server_name=server_name, server_name_repr=repr(server_name))
         entrypoint.write_text(content, encoding="utf-8")
         return True
     except Exception:
@@ -696,7 +716,9 @@ def get_status():
                                 stats["cpu"] = proc.cpu_percent(interval=None)
                                 stats["ram"] = proc.memory_info().rss  # Bytes
                                 stats["pid"] = proc.pid
-                        except: pass
+                        except Exception:
+                            # Best-effort metrics; do not fail status on missing permissions / races.
+                            pass
 
                     is_core = any(k in s_id for k in core_keywords)
                     servers.append({
@@ -750,7 +772,9 @@ def get_status():
             mtime = activator_path.stat().st_mtime
             if (datetime.datetime.now().timestamp() - mtime) > 86400:
                 version_status = "sync-required"
-    except: pass
+    except Exception as e:
+        if session_logger:
+            session_logger.log("WARNING", f"Version status check failed: {e}")
 
     missing_cores = []
     if not (pm.bin_dir / "mcp-activator").exists(): missing_cores.append("activator")
@@ -797,7 +821,8 @@ def validate_env():
                         # Only show errors that haven't been acknowledged
                         if entry.get("level") == "ERROR" and entry.get("timestamp", 0) > pm.acknowledged_errors:
                             recent_errors.append(entry)
-                    except: pass
+                    except Exception:
+                        continue
                 
                 if recent_errors:
                     # Group by message to avoid spam
@@ -818,7 +843,9 @@ def validate_env():
         for server_id, cfg in inventory.get("mcp_servers", {}).items():
             # Basic process check if possible
             pass
-    except: pass
+    except Exception as e:
+        if session_logger:
+            session_logger.log("WARNING", f"Server health validation degraded: {e}")
 
     # 3. Check Python version
     if sys.version_info < (3, 10):
@@ -953,6 +980,17 @@ def export_report():
     """Generate a high-fidelity HTML report."""
     from flask import render_template_string
     server_id = request.args.get("server")
+    log_payload = None
+    if server_id:
+        try:
+            resp = server_logs_latest(server_id)
+            # If server_logs_latest returned an error response, pass it through as None.
+            if isinstance(resp, tuple):
+                log_payload = None
+            else:
+                log_payload = resp.get_json()
+        except Exception:
+            log_payload = None
     template = """
     <html>
     <head><style>
@@ -968,9 +1006,11 @@ def export_report():
         th { background: #f8f9fa; color: #7f8c8d; font-size: 12px; text-transform: uppercase; }
         code { background: #f1f2f6; padding: 2px 6px; border-radius: 4px; font-family: monospace; color: #e74c3c; }
         .log-entry { font-family: monospace; font-size: 12px; border-bottom: 1px solid #eee; padding: 8px 0; }
+        pre { background: #0b1020; color: #e2e8f0; padding: 14px; border-radius: 10px; overflow: auto; white-space: pre-wrap; }
+        details > summary { cursor: pointer; font-weight: 600; }
     </style></head>
     <body>
-        <h1>Nexus Audit Report</h1>
+        <h1>Nexus Server Report</h1>
         <p><strong>Generated:</strong> {{ time }}</p>
         {% if server_id %}
         <p><strong>Target Server:</strong> <code>{{ server_id }}</code></p>
@@ -978,7 +1018,7 @@ def export_report():
         
         {% if target %}
         <div class="card">
-            <h2>Target Server Audit</h2>
+            <h2>Target Server</h2>
             <table>
                 <tr><th>Field</th><th>Value</th></tr>
                 <tr><td>Name</td><td>{{ target.name }}</td></tr>
@@ -989,44 +1029,37 @@ def export_report():
                 <tr><td>Start Cmd</td><td><code>{{ (target.raw.run.start_cmd if target.raw.run and target.raw.run.start_cmd else '') }}</code></td></tr>
                 <tr><td>Last Start Log</td><td><code>/server/logs/{{ server_id }}/view</code></td></tr>
             </table>
+            {% if log_payload and log_payload.lines %}
+              <h3 style="margin-top:18px;margin-bottom:8px;">Last Start Log (tail)</h3>
+              <div style="font-size:12px;margin-bottom:8px;">
+                <div><strong>File:</strong> <code>{{ log_payload.log_path }}</code></div>
+              </div>
+              <pre>{{ "\n".join(log_payload.lines) }}</pre>
+            {% else %}
+              <p class="warning" style="margin-top:18px;">No per-server start log found. Try starting the server once and re-open this report.</p>
+            {% endif %}
         </div>
         {% elif server_id %}
         <div class="card">
-            <h2>Target Server Audit</h2>
+            <h2>Target Server</h2>
             <p class="warning">Requested server id was not found in inventory: <code>{{ server_id }}</code></p>
         </div>
         {% endif %}
 
         <div class="card">
-            <h2>System Health</h2>
-            <p><strong>Overall Posture:</strong> <span class="{{ 'success' if status.pulse == 'green' else 'error' }}">{{ status.posture }}</span></p>
-            <p><strong>Project:</strong> {{ project.id }}</p>
-            <p><strong>Location:</strong> <code>{{ project.path }}</code></p>
-            
-            <table>
-                <tr><th>Component</th><th>Status</th></tr>
-                <tr><td>Activator</td><td class="{{ 'success' if status.activator == 'online' else 'error' }}">{{ status.activator }}</td></tr>
-                <tr><td>Librarian</td><td class="{{ 'success' if status.librarian == 'online' else 'error' }}">{{ status.librarian }}</td></tr>
-            </table>
-        </div>
-
-        <div class="card">
-            <h2>Inventory Manifest</h2>
-            <table>
-                <thead>
-                    <tr><th>ID</th><th>Status</th><th>Type</th><th>PID</th></tr>
-                </thead>
-                <tbody>
-                    {% for s in status.servers %}
-                    <tr>
-                        <td>{{ s.name }}</td>
-                        <td><span class="{{ 'success' if s.status == 'online' else 'error' }}">{{ s.status }}</span></td>
-                        <td>{{ s.type }}</td>
-                        <td>{{ s.metrics.pid or '-' }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+          <details>
+            <summary>System context (optional)</summary>
+            <div style="margin-top:12px;">
+              <p><strong>Overall Posture:</strong> <span class="{{ 'success' if status.pulse == 'green' else 'error' }}">{{ status.posture }}</span></p>
+              <p><strong>Project:</strong> {{ project.id }}</p>
+              <p><strong>Location:</strong> <code>{{ project.path }}</code></p>
+              <table>
+                  <tr><th>Component</th><th>Status</th></tr>
+                  <tr><td>Activator</td><td class="{{ 'success' if status.activator == 'online' else 'error' }}">{{ status.activator }}</td></tr>
+                  <tr><td>Librarian</td><td class="{{ 'success' if status.librarian == 'online' else 'error' }}">{{ status.librarian }}</td></tr>
+              </table>
+            </div>
+          </details>
         </div>
 
         <div class="card">
@@ -1062,7 +1095,8 @@ def export_report():
                                   status=status_data,
                                   logs=logs_data,
                                   server_id=server_id,
-                                  target=target)
+                                  target=target,
+                                  log_payload=log_payload)
     return html
 
 @app.route('/nexus/catalog', methods=['GET'])
@@ -1260,6 +1294,72 @@ def system_update_python():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/system/python_info', methods=['GET'])
+def system_python_info():
+    """
+    Return Python/runtime visibility for the Command Center UI:
+    - which interpreter the bridge is running under (truth for server-side behavior)
+    - whether Nexus venvs exist
+    - a small set of package versions used by the suite
+    """
+
+    def _probe(cmd: list[str]) -> Tuple[int, str, str]:
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+            return (p.returncode, (p.stdout or "").strip(), (p.stderr or "").strip())
+        except Exception as e:
+            return (1, "", str(e))
+
+    bridge_python = sys.executable
+    which_python3 = shutil.which("python3") or ""
+    which_pip3 = shutil.which("pip3") or ""
+
+    nexus_venv_python = str(NEXUS_HOME / ".venv" / "bin" / "python")
+    nexus_venv_exists = Path(nexus_venv_python).exists()
+
+    pkgs = [
+        "flask",
+        "flask-cors",
+        "psutil",
+        "pyyaml",
+        "requests",
+        "pillow",
+        "pypdf",
+        "openpyxl",
+        "python-docx",
+    ]
+
+    pkg_versions: Dict[str, Any] = {}
+    for name in pkgs:
+        rc, out, err = _probe([bridge_python, "-m", "pip", "show", name])
+        if rc != 0 or not out:
+            pkg_versions[name] = {"present": False, "version": None, "error": err or None}
+            continue
+        version = None
+        for line in out.splitlines():
+            if line.lower().startswith("version:"):
+                version = line.split(":", 1)[1].strip()
+                break
+        pkg_versions[name] = {"present": True, "version": version, "error": None}
+
+    rc_v, out_v, err_v = _probe([bridge_python, "--version"])
+    rc_p, out_p, err_p = _probe([bridge_python, "-m", "pip", "--version"])
+
+    return jsonify(
+        {
+            "success": True,
+            "bridge": {
+                "python": bridge_python,
+                "python_version": out_v or err_v,
+                "pip_version": out_p or err_p,
+            },
+            "system": {"python3": which_python3, "pip3": which_pip3},
+            "nexus": {"venv_python": nexus_venv_python, "venv_exists": nexus_venv_exists},
+            "packages": pkg_versions,
+        }
+    )
+
 @app.route('/project/rollback', methods=['POST'])
 def project_rollback():
     """Restores a previous inventory state. Sanitizes input to prevent path traversal."""
@@ -1315,7 +1415,8 @@ def export_logs():
             try:
                 log = json.loads(line)
                 writer.writerow([datetime.datetime.fromtimestamp(log.get("timestamp", 0)).isoformat(), log.get("level"), log.get("message"), log.get("suggestion", "")])
-            except: continue
+            except Exception:
+                continue
     return Response(output.getvalue(), mimetype="text/csv", headers={"Content-disposition": "attachment; filename=nexus_history.csv"})
 
 @app.route('/system/uninstall', methods=['POST'])
@@ -1359,7 +1460,7 @@ def server_control():
         # Auto-repair older forged stub entrypoints that print human banners to stdout.
         # This prevents MCP clients (Claude, Cursor, etc.) from failing JSON parsing.
         try:
-            if len(argv) >= 2 and argv[1] == "mcp_server.py":
+            if len(argv) >= 2 and Path(str(argv[1])).name == "mcp_server.py":
                 server_path = target.get("path")
                 if server_path:
                     ep = Path(server_path) / "mcp_server.py"
@@ -1383,19 +1484,43 @@ def server_control():
                     argv = [fallback] + list(argv[1:])
                     note = (note + " | " if note else "") + f"Auto-selected {fallback} to satisfy requires-python {requires_python} (was {old})"
                 else:
-                    msg = f"Python {ver[0]}.{ver[1]}.{ver[2]} is too old for requires-python '{requires_python}'."
-                    if session_logger:
-                        session_logger.log("ERROR", f"Blocked start for {s_id}: python mismatch", metadata={"requires_python": requires_python, "python": ver, "cmd": argv, "cwd": cwd})
-                    return jsonify({
-                        "success": False,
-                        "error": "Runtime mismatch: Python version too old",
-                        "detail": msg,
-                        "requires_python": requires_python,
-                        "python": {"major": ver[0], "minor": ver[1], "patch": ver[2]},
-                        "resolved_cmd": argv,
-                        "cwd": cwd,
-                        "note": note,
-                    }), 409
+                    # Prefer managed per-suite runtimes before telling the user to change their system toolchain.
+                    managed: Optional[ManagedPython] = None
+                    try:
+                        pin = None
+                        rt_cfg = target.get("runtime") or {}
+                        if isinstance(rt_cfg, dict):
+                            pin = rt_cfg.get("python")
+                        if isinstance(pin, str) and pin.strip():
+                            # Exact pin: use only if installed.
+                            for mp in list_managed_pythons():
+                                if mp.version == pin.strip():
+                                    managed = mp
+                                    break
+                        if not managed:
+                            managed = choose_managed_python_at_least(min_py[0], min_py[1])
+                    except Exception:
+                        managed = None
+
+                    if managed:
+                        old = argv[0]
+                        argv = [str(managed.python)] + list(argv[1:])
+                        note = (note + " | " if note else "") + f"Using managed python {managed.version} to satisfy requires-python {requires_python} (was {old})"
+                    else:
+                        msg = f"Python {ver[0]}.{ver[1]}.{ver[2]} is too old for requires-python '{requires_python}'."
+                        if session_logger:
+                            session_logger.log("ERROR", f"Blocked start for {s_id}: python mismatch", metadata={"requires_python": requires_python, "python": ver, "cmd": argv, "cwd": cwd})
+                        return jsonify({
+                            "success": False,
+                            "error": "Runtime mismatch: Python version too old",
+                            "detail": msg,
+                            "requires_python": requires_python,
+                            "python": {"major": ver[0], "minor": ver[1], "patch": ver[2]},
+                            "resolved_cmd": argv,
+                            "cwd": cwd,
+                            "note": note,
+                            "next_step": f"mcp-observer runtime ensure --python {min_py[0]}.{min_py[1]}.0",
+                        }), 409
 
         log_dir = pm.app_data_dir / "server_logs"
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -1835,8 +1960,11 @@ def librarian_watcher():
             import psutil
             for p in psutil.process_iter(['cmdline']):
                 if "mcp.py --watch" in " ".join(p.info['cmdline'] or []):
-                    try: p.kill()
-                    except: pass
+                    try:
+                        p.kill()
+                    except Exception as e:
+                        if session_logger:
+                            session_logger.log("WARNING", f"Failed to kill watcher process: {e}")
             return jsonify({"status": "stopped"})
             
     is_alive = pm.watcher_proc is not None and pm.watcher_proc.poll() is None
@@ -1871,7 +1999,9 @@ def get_artifacts():
     try:
         for f in sorted(artifact_dir.glob("*"), key=os.path.getmtime, reverse=True)[:50]:
             results.append({"name": f.name, "path": str(f), "size": f.stat().st_size, "modified": os.path.getmtime(f)})
-    except: pass
+    except Exception as e:
+        if session_logger:
+            session_logger.log("WARNING", f"Artifact listing failed: {e}")
     return jsonify(results)
 
 import threading

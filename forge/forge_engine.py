@@ -137,6 +137,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+import warnings
 from typing import Any, Dict, Optional
 
 
@@ -201,6 +202,10 @@ def handle_request(request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def main() -> None:
+    # Guardrail: keep stdout strictly JSON-RPC. Anything human-readable must go to stderr.
+    warnings.showwarning = lambda message, category, filename, lineno, file=None, line=None: sys.stderr.write(
+        warnings.formatwarning(message, category, filename, lineno, line)
+    )
     # Stdio loop: 1 JSON-RPC message per line.
     while True:
         line = sys.stdin.readline()

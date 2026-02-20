@@ -422,7 +422,8 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
                         subprocess.run(["open", "-a", "Terminal", str(root_dir)])
                     elif sys.platform == "win32":
                         # Open new cmd window
-                        subprocess.run(["start", "cmd", "/K", f"cd /d {root_dir}"], shell=True)
+                        # SECURITY: avoid shell=True. Use `cmd.exe /c start ...` (start is a cmd builtin).
+                        subprocess.run(["cmd", "/c", "start", "cmd", "/K", f"cd /d {root_dir}"])
                     else:
                         # Linux/other - simplified fallback
                         subprocess.run(["x-terminal-emulator", "--working-directory", str(root_dir)])

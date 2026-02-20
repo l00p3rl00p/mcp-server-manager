@@ -85,9 +85,9 @@ def main():
     flask_thread = threading.Thread(target=_run_flask, daemon=True, name="nexus-flask")
     flask_thread.start()
 
-    print(f"🚀 Nexus GUI Bridge Starting...")
-    print(f"🔗 URL: {DASHBOARD_URL}")
-    print(f"📦 Tray: Indigo dot in menu bar")
+    # Keep terminal output minimal and parseable; tray is the primary UX surface.
+    print("Nexus tray starting...", file=sys.stderr)
+    print(f"Dashboard: {DASHBOARD_URL}", file=sys.stderr)
     
     # Give Flask a moment to bind, then open browser immediately
     time.sleep(1.5)

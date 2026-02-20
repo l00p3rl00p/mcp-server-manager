@@ -184,6 +184,48 @@ class TestRedTeamCallChains(unittest.TestCase):
         self.assertTrue(payload.get("success"))
         self.assertEqual(payload.get("path"), "/tmp/selected")
 
+    def test_system_python_info_returns_versions_and_packages(self):
+        gb = self.gui_bridge
+
+        def _fake_run(cmd, capture_output=False, text=False, timeout=None, **kwargs):
+            joined = " ".join(cmd)
+            p = MagicMock()
+            if cmd[:2] == [gb.sys.executable, "--version"]:
+                p.returncode = 0
+                p.stdout = "Python 3.12.0"
+                p.stderr = ""
+                return p
+            if cmd[:3] == [gb.sys.executable, "-m", "pip"] and cmd[3:] == ["--version"]:
+                p.returncode = 0
+                p.stdout = "pip 26.0.0"
+                p.stderr = ""
+                return p
+            if cmd[:3] == [gb.sys.executable, "-m", "pip"] and cmd[3] == "show":
+                pkg = cmd[4]
+                p.returncode = 0
+                p.stdout = f"Name: {pkg}\nVersion: 1.2.3\n"
+                p.stderr = ""
+                return p
+            p.returncode = 1
+            p.stdout = ""
+            p.stderr = f"unexpected cmd: {joined}"
+            return p
+
+        with patch.object(gb.shutil, "which", side_effect=lambda x: f"/usr/bin/{x}"), patch.object(
+            gb.subprocess, "run", side_effect=_fake_run
+        ), patch.object(gb.Path, "exists", return_value=True):
+            res = self.client.get("/system/python_info")
+
+        self.assertEqual(res.status_code, 200)
+        payload = res.get_json()
+        self.assertTrue(payload.get("success"))
+        self.assertIn("bridge", payload)
+        self.assertIn("packages", payload)
+        self.assertTrue(payload["nexus"]["venv_exists"])
+        self.assertEqual(payload["bridge"]["python_version"], "Python 3.12.0")
+        self.assertEqual(payload["bridge"]["pip_version"], "pip 26.0.0")
+        self.assertEqual(payload["packages"]["flask"]["version"], "1.2.3")
+
 
 if __name__ == "__main__":
     unittest.main()

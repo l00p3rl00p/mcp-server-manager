@@ -15,6 +15,8 @@ from .util import slugify
 from .logger import setup_logging, log_event
 from .state import write_inventory_snapshot, write_runtime_snapshot, write_health_snapshot
 
+from runtime_manager import ensure_managed_python, list_managed_pythons
+
 try:
     from nexus_session_logger import NexusSessionLogger
     session_logger = NexusSessionLogger()
@@ -275,6 +277,36 @@ def cmd_gui(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_runtime(args: argparse.Namespace) -> int:
+    """
+    Managed Python runtimes: isolated from Homebrew/system Python.
+    """
+    if args.action == "status":
+        items = list_managed_pythons()
+        if args.json:
+            print(json.dumps([{"version": i.version, "python": str(i.python)} for i in items], indent=2))
+            return 0
+        if not items:
+            print("(no managed python runtimes installed)")
+            return 0
+        for i in items:
+            print(f"- python {i.version}: {i.python}")
+        return 0
+
+    if args.action == "ensure":
+        mp = ensure_managed_python(
+            args.python, url=args.url, provider=getattr(args, "provider", "indygreg"), force=bool(args.force)
+        )
+        if args.json:
+            print(json.dumps({"ok": True, "version": mp.version, "python": str(mp.python)}, indent=2))
+            return 0
+        print(f"Installed managed python {mp.version}: {mp.python}")
+        return 0
+
+    print("ERROR: unknown runtime action")
+    return 2
+
+
 
 def main() -> None:
     # Setup unified logging (verbose=False by default for console, but file logs are DEBUG)
@@ -332,6 +364,14 @@ def main() -> None:
     pgui = sub.add_parser("gui", help="Launch the local GUI dashboard.")
     pgui.add_argument("--port", type=int, default=8501, help="Port to listen on (default: 8501)")
     pgui.set_defaults(func=cmd_gui)
+
+    prt = sub.add_parser("runtime", help="Managed runtimes (isolated; does not touch Homebrew/system Python).")
+    prt.add_argument("action", choices=["status", "ensure"])
+    prt.add_argument("--python", default="3.11.8", help="Python version to install (ensure)")
+    prt.add_argument("--url", help="URL to a standalone CPython archive (.tar.gz) (ensure). Optional if provider can resolve.")
+    prt.add_argument("--provider", default="indygreg", help="Runtime provider for URL resolution (default: indygreg)")
+    prt.add_argument("--force", action="store_true", help="Reinstall even if already present (ensure)")
+    prt.set_defaults(func=cmd_runtime)
 
     args = p.parse_args()
     

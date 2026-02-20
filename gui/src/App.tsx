@@ -95,6 +95,7 @@ const App: React.FC = () => {
   const [targetClient, setTargetClient] = useState('');
   const [availableClients, setAvailableClients] = useState<string[]>([]);
   const [pendingServerAction, setPendingServerAction] = useState<Record<string, string>>({});
+  const [pythonInfo, setPythonInfo] = useState<any>(null);
 
   const splitCmd = (cmd: string): string[] => {
     const m = cmd.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
@@ -162,7 +163,8 @@ const App: React.FC = () => {
         ['validate', setHealthIssues],
         ['project/history', setInventoryHistory],
         ['nexus/catalog', setCommandCatalog],
-        ['forge/last', (d) => d && Object.keys(d).length > 0 && setForgeResult({ ...d, status: 'completed' })]
+        ['forge/last', (d) => d && Object.keys(d).length > 0 && setForgeResult({ ...d, status: 'completed' })],
+        ['system/python_info', (d) => d && d.success && setPythonInfo(d)]
       ];
 
       await Promise.all(endpoints.map(async ([path, setter]) => {
@@ -199,7 +201,12 @@ const App: React.FC = () => {
         body: JSON.stringify({ id, action })
       });
       if (res.ok) {
-        addNotification(`Server ${id} ${action} successful.`, 'success');
+        const data = await res.json().catch(() => ({}));
+        const extra =
+          action === 'start'
+            ? (data?.note ? ` (${data.note})` : (data?.log_path ? ` (logs: ${data.log_path})` : ''))
+            : '';
+        addNotification(`Server ${id} ${action === 'start' ? 'started' : 'stopped'}.${extra}`, 'success');
       } else {
         const data = await res.json();
         addNotification(data.error || `Failed to ${action} server.`, 'error');
@@ -553,7 +560,7 @@ const App: React.FC = () => {
                           {/* Controls Row */}
                           <div style={{ marginTop: '20px', display: 'flex', gap: '8px' }}>
                             <button
-                              className={`nav-item ${s.status === 'online' ? 'badge-danger' : 'badge-success'}`}
+                              className={`nav-item ${s.status === 'online' ? 'badge-danger' : 'badge-primary'}`}
                               style={{ flex: 1, justifyContent: 'center', fontSize: '12px', opacity: pendingServerAction[s.id] ? 0.6 : 1 }}
                               disabled={!!pendingServerAction[s.id]}
                               onClick={() => handleControl(s.id, s.status === 'online' ? 'stop' : 'start')}
@@ -562,11 +569,6 @@ const App: React.FC = () => {
                               {pendingServerAction[s.id]
                                 ? (pendingServerAction[s.id] === 'start' ? 'Starting…' : 'Stopping…')
                                 : (s.status === 'online' ? 'Stop' : 'Start')}
-                            </button>
-
-                            {/* Audit Button (New Outcome) */}
-                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => window.open(`${API_BASE}/export/report?server=${s.id}`, '_blank')} title="Audit Log">
-                              <FileText size={18} />
                             </button>
 
                             {/* Last Start Log */}
@@ -697,7 +699,7 @@ const App: React.FC = () => {
                         <span className={`badge ${s.status === 'online' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>{s.status}</span>
                         <div style={{ display: 'flex', gap: '6px' }}>
                           <button
-                            className={`nav-item ${s.status === 'online' ? 'badge-danger' : 'badge-success'}`}
+                            className={`nav-item ${s.status === 'online' ? 'badge-danger' : 'badge-primary'}`}
                             style={{ padding: '4px 12px', fontSize: '11px', opacity: pendingServerAction[s.id] ? 0.6 : 1 }}
                             disabled={!!pendingServerAction[s.id]}
                             onClick={() => handleControl(s.id, s.status === 'online' ? 'stop' : 'start')}
@@ -1250,7 +1252,7 @@ const App: React.FC = () => {
                     style={{ flex: 1, padding: '12px 16px', background: 'rgba(0,0,0,0.3)' }}
                     value={quickIndexResource}
                     onChange={e => setQuickIndexResource(e.target.value)}
-                    placeholder='e.g. "~/developer/dropbox/ComplexEventProcessing Refined.pdf"'
+                    placeholder='e.g. "/Users/almowplay/developer/dropbox/ComplexEventProcessing Refined.pdf"'
                   />
                   <button className="nav-item" style={{ padding: '0 16px' }} onClick={async () => {
                     try {
@@ -1365,6 +1367,58 @@ const App: React.FC = () => {
                       Upgrade Pip Deps
                     </button>
                   </div>
+
+                  {pythonInfo && (
+                    <div className="glass-card" style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '13px', opacity: 0.9 }}>Runtime Visibility</h4>
+                          <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'var(--text-dim)' }}>
+                            Bridge Python: <code>{pythonInfo.bridge?.python_version || 'unknown'}</code>
+                          </p>
+                        </div>
+                        <button className="nav-item" style={{ padding: '6px 10px' }} onClick={() => fetchData()}>Refresh</button>
+                      </div>
+
+                      <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div style={{ fontSize: '11px' }}>
+                          <div style={{ opacity: 0.7, marginBottom: '4px' }}>Bridge Interpreter</div>
+                          <code style={{ fontSize: '10px' }}>{pythonInfo.bridge?.python || ''}</code>
+                        </div>
+                        <div style={{ fontSize: '11px' }}>
+                          <div style={{ opacity: 0.7, marginBottom: '4px' }}>Bridge Pip</div>
+                          <code style={{ fontSize: '10px' }}>{pythonInfo.bridge?.pip_version || ''}</code>
+                        </div>
+                        <div style={{ fontSize: '11px' }}>
+                          <div style={{ opacity: 0.7, marginBottom: '4px' }}>System python3</div>
+                          <code style={{ fontSize: '10px' }}>{pythonInfo.system?.python3 || ''}</code>
+                        </div>
+                        <div style={{ fontSize: '11px' }}>
+                          <div style={{ opacity: 0.7, marginBottom: '4px' }}>Nexus venv</div>
+                          <code style={{ fontSize: '10px' }}>
+                            {pythonInfo.nexus?.venv_exists ? 'present' : 'missing'} — {pythonInfo.nexus?.venv_python || ''}
+                          </code>
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: '12px', fontSize: '11px', opacity: 0.8 }}>Key Packages</div>
+                      <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
+                        {Object.entries(pythonInfo.packages || {}).map(([name, meta]: any) => (
+                          <div key={name} className="glass-card" style={{ padding: '10px', background: 'rgba(0,0,0,0.25)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <b style={{ fontSize: '11px' }}>{name}</b>
+                              <span className={`badge ${meta?.present ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '9px' }}>
+                                {meta?.present ? 'ok' : 'missing'}
+                              </span>
+                            </div>
+                            <div style={{ marginTop: '6px', fontSize: '10px', opacity: 0.85 }}>
+                              {meta?.version ? <code>{meta.version}</code> : <span style={{ opacity: 0.7 }}>—</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </section>
 
