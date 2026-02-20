@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 import time
+import types
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -133,6 +134,28 @@ class TestRedTeamCallChains(unittest.TestCase):
         payload = res.get_json()
         self.assertEqual(payload.get("pulse"), "red")
         self.assertIn("Missing", payload.get("posture", ""))
+
+    def test_llm_batch_calls_wrapper_and_returns_results(self):
+        """
+        Call-chain: HTTP /llm/batch -> imports mcp_wrapper.wrapper -> wrapper.call executed -> JSON response.
+        Proves the endpoint is wired to the wrapper layer (no ghost response).
+        """
+        gb = self.gui_bridge
+
+        fake = types.ModuleType("mcp_wrapper")
+        wrapper_obj = MagicMock()
+        wrapper_obj.call = MagicMock(side_effect=[{"ok": True}, {"ok": False}])
+        fake.wrapper = wrapper_obj
+
+        with patch.dict(sys.modules, {"mcp_wrapper": fake}):
+            res = self.client.post("/llm/batch", json={"requests": [{"a": 1}, {"b": 2}]})
+
+        self.assertEqual(res.status_code, 200)
+        payload = res.get_json()
+        self.assertEqual(payload.get("total"), 2)
+        self.assertEqual(len(payload.get("results") or []), 2)
+        self.assertEqual(payload.get("efficiency_gain"), "PARALLEL_REAL_EXECUTION")
+        self.assertEqual(wrapper_obj.call.call_count, 2)
 
 
 if __name__ == "__main__":

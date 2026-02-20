@@ -479,6 +479,121 @@ def _resolve_server_run(target: Dict[str, Any]) -> Tuple[list[str], Optional[str
 
     return (argv, str(cwd_path) if cwd_path else None, env, note, requires_python)
 
+def _forged_entrypoint_needs_repair(entrypoint: Path) -> bool:
+    """
+    Older forged servers emitted human banners to stdout (e.g. 'MCP Server Ready (Stdio)'),
+    which breaks MCP clients that expect JSON on stdout.
+    """
+    try:
+        if not entrypoint.exists() or not entrypoint.is_file():
+            return False
+        txt = entrypoint.read_text(encoding="utf-8", errors="ignore")
+        return ("MCP Server Ready" in txt) or ("Nexus-Forged MCP Server Ready" in txt) or ("print(\"MCP Server" in txt)
+    except Exception:
+        return False
+
+def _repair_forged_entrypoint(entrypoint: Path, server_name: str) -> bool:
+    """
+    Rewrite the baseline forged entrypoint to a minimal MCP stdio JSON-RPC server.
+    Returns True if repaired (or already compliant), False if repair failed.
+    """
+    try:
+        if not entrypoint.parent.exists():
+            return False
+        if entrypoint.exists() and not _forged_entrypoint_needs_repair(entrypoint):
+            return True
+
+        content = f"""# Baseline MCP Server (Repaired)
+\"\"\"
+MCP Server: {server_name}
+Repaired by Nexus Server Manager to be MCP-stdio compliant.
+\"\"\"
+from __future__ import annotations
+
+import json
+import sys
+import time
+from typing import Any, Dict, Optional
+
+
+SERVER_NAME = {server_name!r}
+SERVER_VERSION = "0.0.1-forged"
+
+
+def _ok(msg_id: Any, result: Any) -> Dict[str, Any]:
+    return {{"jsonrpc": "2.0", "id": msg_id, "result": result}}
+
+
+def _err(msg_id: Any, code: int, message: str) -> Dict[str, Any]:
+    return {{"jsonrpc": "2.0", "id": msg_id, "error": {{"code": code, "message": message}}}}
+
+
+def handle_request(request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    method = request.get("method")
+    params = request.get("params") or {{}}
+    msg_id = request.get("id")
+
+    if msg_id is None and isinstance(method, str) and method.startswith("notifications/"):
+        return None
+
+    try:
+        if method == "initialize":
+            return _ok(
+                msg_id,
+                {{
+                    "protocolVersion": "2024-11-05",
+                    "serverInfo": {{"name": SERVER_NAME, "version": SERVER_VERSION}},
+                    "capabilities": {{"tools": {{"listChanged": False}}}},
+                }},
+            )
+        if method in ("notifications/initialized",):
+            return None
+        if method == "tools/list":
+            return _ok(
+                msg_id,
+                {{
+                    "tools": [
+                        {{
+                            "name": "ping",
+                            "description": "Liveness check (forged baseline).",
+                            "inputSchema": {{"type": "object", "properties": {{}}, "additionalProperties": False}},
+                        }}
+                    ]
+                }},
+            )
+        if method == "tools/call":
+            name = (params.get("name") or "").strip()
+            if name == "ping":
+                return _ok(msg_id, {{"ok": True, "ts": time.time(), "server": SERVER_NAME}})
+            return _err(msg_id, -32601, f"Unknown tool: {name}")
+        return _err(msg_id, -32601, f"Unknown method: {method}")
+    except Exception as e:
+        return _err(msg_id, -32000, f"Server error: {e}")
+
+
+def main() -> None:
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            break
+        try:
+            req = json.loads(line)
+        except Exception:
+            continue
+        resp = handle_request(req)
+        if resp is not None:
+            sys.stdout.write(json.dumps(resp) + "\\n")
+            sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()
+"""
+        entrypoint.write_text(content, encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
 pm = ProjectManager()
 
 @app.route('/health', methods=['GET'])
@@ -1240,6 +1355,20 @@ def server_control():
             return jsonify({"error": f"No start command resolved for '{s_id}'"}), 400
         if env is None:
             env = os.environ.copy()
+
+        # Auto-repair older forged stub entrypoints that print human banners to stdout.
+        # This prevents MCP clients (Claude, Cursor, etc.) from failing JSON parsing.
+        try:
+            if len(argv) >= 2 and argv[1] == "mcp_server.py":
+                server_path = target.get("path")
+                if server_path:
+                    ep = Path(server_path) / "mcp_server.py"
+                    if _forged_entrypoint_needs_repair(ep):
+                        ok = _repair_forged_entrypoint(ep, s_id)
+                        if ok:
+                            note = (note + " | " if note else "") + "Auto-repaired forged entrypoint for MCP-stdio compliance"
+        except Exception:
+            pass
 
         # Runtime gating: if pyproject declares requires-python and the chosen interpreter
         # does not satisfy it, block start with a deterministic error (no "Start lies").

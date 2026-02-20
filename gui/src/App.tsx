@@ -93,6 +93,7 @@ const App: React.FC = () => {
   const [injectionStatus, setInjectionStatus] = useState<any>(null);
   const [targetClient, setTargetClient] = useState('');
   const [availableClients, setAvailableClients] = useState<string[]>([]);
+  const [pendingServerAction, setPendingServerAction] = useState<Record<string, string>>({});
 
   // Terminal Filter State
   const [terminalFilter, setTerminalFilter] = useState('');
@@ -150,6 +151,7 @@ const App: React.FC = () => {
 
   const handleControl = async (id: string, action: string) => {
     try {
+      setPendingServerAction(prev => ({ ...prev, [id]: action }));
       addNotification(`Sending ${action} command to ${id}...`, 'info');
       const res = await fetch(API_BASE + '/server/control', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -162,7 +164,15 @@ const App: React.FC = () => {
         addNotification(data.error || `Failed to ${action} server.`, 'error');
       }
       fetchData();
-    } catch (e) { addNotification(String(e), 'error'); }
+    } catch (e) {
+      addNotification(String(e), 'error');
+    } finally {
+      setPendingServerAction(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
   };
 
   const handleAcknowledge = async () => {
@@ -465,8 +475,16 @@ const App: React.FC = () => {
 
                           {/* Controls Row */}
                           <div style={{ marginTop: '20px', display: 'flex', gap: '8px' }}>
-                            <button className={`nav-item ${s.status === 'online' ? 'badge-danger' : 'badge-success'}`} style={{ flex: 1, justifyContent: 'center', fontSize: '12px' }} onClick={() => handleControl(s.id, s.status === 'online' ? 'stop' : 'start')}>
-                              {s.status === 'online' ? 'Stop' : 'Start'}
+                            <button
+                              className={`nav-item ${s.status === 'online' ? 'badge-danger' : 'badge-success'}`}
+                              style={{ flex: 1, justifyContent: 'center', fontSize: '12px', opacity: pendingServerAction[s.id] ? 0.6 : 1 }}
+                              disabled={!!pendingServerAction[s.id]}
+                              onClick={() => handleControl(s.id, s.status === 'online' ? 'stop' : 'start')}
+                              title={pendingServerAction[s.id] ? `Working: ${pendingServerAction[s.id]}` : undefined}
+                            >
+                              {pendingServerAction[s.id]
+                                ? (pendingServerAction[s.id] === 'start' ? 'Starting…' : 'Stopping…')
+                                : (s.status === 'online' ? 'Stop' : 'Start')}
                             </button>
 
                             {/* Audit Button (New Outcome) */}
@@ -596,8 +614,16 @@ const App: React.FC = () => {
                         </div>
                         <span className={`badge ${s.status === 'online' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>{s.status}</span>
                         <div style={{ display: 'flex', gap: '6px' }}>
-                          <button className={`nav-item ${s.status === 'online' ? 'badge-danger' : 'badge-success'}`} style={{ padding: '4px 12px', fontSize: '11px' }} onClick={() => handleControl(s.id, s.status === 'online' ? 'stop' : 'start')}>
-                            {s.status === 'online' ? 'Stop' : 'Start'}
+                          <button
+                            className={`nav-item ${s.status === 'online' ? 'badge-danger' : 'badge-success'}`}
+                            style={{ padding: '4px 12px', fontSize: '11px', opacity: pendingServerAction[s.id] ? 0.6 : 1 }}
+                            disabled={!!pendingServerAction[s.id]}
+                            onClick={() => handleControl(s.id, s.status === 'online' ? 'stop' : 'start')}
+                            title={pendingServerAction[s.id] ? `Working: ${pendingServerAction[s.id]}` : undefined}
+                          >
+                            {pendingServerAction[s.id]
+                              ? (pendingServerAction[s.id] === 'start' ? 'Starting…' : 'Stopping…')
+                              : (s.status === 'online' ? 'Stop' : 'Start')}
                           </button>
                           <button className="nav-item" style={{ padding: '4px 8px' }} onClick={() => setSelectedItem(s.raw)} title="Inspect"><Search size={14} /></button>
                           {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager', 'nexus-librarian'].includes(s.id) ? (
