@@ -9,10 +9,15 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from collections import deque
 import time
-__version__ = "3.3.0"
+import re
+import shutil
+import threading
+__version__ = "3.3.1"
 
 METRIC_HISTORY = deque(maxlen=60)
 from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
+from urllib.parse import urlparse
 
 # Determine the directory where this script lives
 BASE_DIR = Path(__file__).parent.resolve()
@@ -34,13 +39,70 @@ def serve_static(path):
     # Default to index.html for React Router compatibility
     return send_from_directory(app.static_folder, "index.html")
 
+# OS navigation helpers (native dialogs). These are best-effort and will not work in headless/CI.
+@app.route('/os/pick_file', methods=['POST'])
+def os_pick_file():
+    if os.environ.get("NEXUS_HEADLESS") == "1":
+        return jsonify({"success": False, "error": "OS file picker not available in headless mode."}), 501
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        path = filedialog.askopenfilename()
+        try:
+            root.destroy()
+        except Exception:
+            pass
+        if not path:
+            return jsonify({"success": False, "error": "Canceled"}), 400
+        return jsonify({"success": True, "path": path})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/os/pick_folder', methods=['POST'])
+def os_pick_folder():
+    if os.environ.get("NEXUS_HEADLESS") == "1":
+        return jsonify({"success": False, "error": "OS folder picker not available in headless mode."}), 501
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        path = filedialog.askdirectory()
+        try:
+            root.destroy()
+        except Exception:
+            pass
+        if not path:
+            return jsonify({"success": False, "error": "Canceled"}), 400
+        return jsonify({"success": True, "path": path})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # Official Logging Integration
 try:
     sys.path.insert(0, str(Path(__file__).parent.parent / "mcp-link-library"))
     from nexus_session_logger import NexusSessionLogger
-    session_logger = NexusSessionLogger()
+    try:
+        session_logger = NexusSessionLogger()
+    except Exception:
+        # In restricted/sandboxed environments we may not be allowed to write to ~/.mcpinv.
+        session_logger = None
 except:
     session_logger = None
+
+if session_logger is not None:
+    _orig_log = getattr(session_logger, "log", None)
+    if callable(_orig_log):
+        def _safe_log(*args, **kwargs):
+            try:
+                return _orig_log(*args, **kwargs)
+            except Exception:
+                return None
+        session_logger.log = _safe_log
 
 # Base Discovery
 NEXUS_HOME = Path.home() / ".mcp-tools"
@@ -55,10 +117,28 @@ class ProjectManager:
         self.log_path = Path.home() / ".mcpinv" / "session.jsonl"
         self.bin_dir = NEXUS_HOME / "bin"
         self.watcher_proc = None # Track the PID
+        self.last_server_cmd: Dict[str, list[str]] = {}  # Best-effort: track actual started argv per server id
+        self.last_server_exit: Dict[str, Dict[str, Any]] = {}  # Best-effort: last exit metadata per server id
+        self.last_server_start: Dict[str, float] = {}  # Best-effort: last start timestamp per server id
         self.acknowledged_errors = 0.0 # Timestamp of last error clear
         self.last_forge_result = None # Persist the last successful forge
         self.load_active_context()
         self.ensure_core_services()
+
+    def core_components(self) -> Dict[str, str]:
+        """
+        Suite-level components that should always be visible on the dashboard
+        (even if not present in inventory.yaml as "servers").
+        """
+        def bin_status(name: str) -> str:
+            return "online" if (self.bin_dir / name).exists() else "missing"
+
+        return {
+            "activator": bin_status("mcp-activator"),
+            "observer": bin_status("mcp-observer"),
+            "surgeon": bin_status("mcp-surgeon"),
+            "librarian_bin": bin_status("mcp-librarian"),
+        }
 
     def ensure_core_services(self):
         """Auto-starts Type-0 Core Dependencies (Librarian) if not running."""
@@ -165,6 +245,240 @@ class ProjectManager:
                 return yaml.safe_load(f) or {"servers": []}
         except: return {"servers": []}
 
+def _parse_pyproject_scripts(pyproject_path: Path) -> Dict[str, str]:
+    """
+    Best-effort extraction of [project.scripts] from a pyproject.toml.
+    Avoids adding new runtime dependencies for TOML parsing.
+    """
+    try:
+        lines = pyproject_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return {}
+
+    scripts: Dict[str, str] = {}
+    in_scripts = False
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            in_scripts = (line == "[project.scripts]")
+            continue
+        if not in_scripts:
+            continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip().strip('"').strip("'")
+        value = value.strip().strip('"').strip("'")
+        if key and value:
+            scripts[key] = value
+    return scripts
+
+def _parse_pyproject_requires_python(pyproject_path: Path) -> Optional[str]:
+    """
+    Best-effort extraction of `requires-python` from [project] in pyproject.toml.
+    Avoids adding runtime dependencies for TOML parsing.
+    """
+    try:
+        lines = pyproject_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return None
+
+    in_project = False
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            in_project = (line == "[project]")
+            continue
+        if not in_project:
+            continue
+        if line.startswith("requires-python"):
+            if "=" not in line:
+                continue
+            _, value = line.split("=", 1)
+            value = value.strip().strip('"').strip("'")
+            return value or None
+    return None
+
+def _min_python_from_spec(spec: Optional[str]) -> Optional[Tuple[int, int]]:
+    """
+    Extract a minimum version tuple from a spec like ">=3.10" or ">=3.10,<4".
+    Conservative: only understands >=X.Y.
+    """
+    if not spec:
+        return None
+    s = spec.strip()
+    # find first occurrence of >=X.Y
+    m = re.search(r">=\s*(\d+)\.(\d+)", s)
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2)))
+
+def _python_version_tuple(python_exe: str, cwd: Optional[str], env: Dict[str, str]) -> Optional[Tuple[int, int, int]]:
+    """
+    Determine interpreter version for the specific python executable being used to launch a server.
+    """
+    try:
+        res = subprocess.run(
+            [python_exe, "-c", "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}')"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            cwd=cwd,
+            env=env,
+        )
+        if res.returncode != 0:
+            return None
+        v = (res.stdout or "").strip()
+        parts = v.split(".")
+        if len(parts) < 2:
+            return None
+        major = int(parts[0])
+        minor = int(parts[1])
+        patch = int(parts[2]) if len(parts) > 2 else 0
+        return (major, minor, patch)
+    except Exception:
+        return None
+
+def _find_python_at_least(min_version: Tuple[int, int], cwd: Optional[str], env: Dict[str, str], exclude: Optional[str] = None) -> Optional[str]:
+    """
+    Best-effort discovery of a Python interpreter that satisfies min_version (major, minor).
+    Returns an executable path or None.
+    """
+    candidates = [
+        "python3.13",
+        "python3.12",
+        "python3.11",
+        "python3.10",
+        "python3",
+        "python",
+    ]
+    for name in candidates:
+        exe = shutil.which(name)
+        if not exe:
+            continue
+        if exclude and os.path.abspath(exe) == os.path.abspath(exclude):
+            continue
+        ver = _python_version_tuple(exe, cwd, env)
+        if not ver:
+            continue
+        if (ver[0], ver[1]) >= min_version:
+            return exe
+    return None
+
+def _looks_like_python_lt_310_union_error(log_tail: str) -> bool:
+    """
+    Detect the common signature when Python<3.10 executes code using PEP604 unions (X | None).
+    """
+    t = (log_tail or "").lower()
+    return "unsupported operand type(s) for |" in t and "nonetype" in t
+
+def _ensure_server_venv(server_dir: Path, base_python: str, log_dir: Path) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Best-effort: ensure a per-server venv exists and has deps installed (editable).
+    Returns (venv_python, setup_log_path).
+    """
+    venv_dir = server_dir / ".venv"
+    venv_py = venv_dir / "bin" / "python"
+    setup_log = log_dir / f"{server_dir.name}_setup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    try:
+        setup_log.parent.mkdir(parents=True, exist_ok=True)
+        with open(setup_log, "w", encoding="utf-8") as f:
+            f.write(f"--- SERVER_DIR: {server_dir} ---\n")
+            f.write(f"--- BASE_PYTHON: {base_python} ---\n")
+            f.write("\n")
+
+            if not venv_py.exists():
+                f.write(f"--- ACTION: create venv ({venv_dir}) ---\n")
+                res = subprocess.run([base_python, "-m", "venv", str(venv_dir)], cwd=str(server_dir), stdout=f, stderr=subprocess.STDOUT, text=True, timeout=180)
+                f.write(f"\n--- VENV_CREATE_RC: {res.returncode} ---\n")
+                if res.returncode != 0:
+                    return (None, str(setup_log))
+
+            f.write("\n--- ACTION: pip install -e . ---\n")
+            res2 = subprocess.run([str(venv_py), "-m", "pip", "install", "-e", "."], cwd=str(server_dir), stdout=f, stderr=subprocess.STDOUT, text=True, timeout=300)
+            f.write(f"\n--- PIP_INSTALL_RC: {res2.returncode} ---\n")
+            if res2.returncode != 0:
+                return (str(venv_py), str(setup_log))
+
+        return (str(venv_py), str(setup_log))
+    except Exception:
+        return (str(venv_py) if venv_py.exists() else None, str(setup_log))
+
+def _normalize_user_path(raw: str) -> str:
+    """
+    Normalize a user-provided path string:
+    - strips surrounding quotes
+    - expands '~'
+    - resolves to an absolute path
+    """
+    s = (raw or "").strip()
+    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+        s = s[1:-1].strip()
+    return str(Path(s).expanduser().resolve())
+
+def _is_url(s: str) -> bool:
+    try:
+        u = urlparse(s)
+        return u.scheme in ("http", "https") and bool(u.netloc)
+    except Exception:
+        return False
+
+def _resolve_server_run(target: Dict[str, Any]) -> Tuple[list[str], Optional[str], Dict[str, str], Optional[str], Optional[str]]:
+    """
+    Resolve how to run a server entry deterministically.
+    Returns: (argv, cwd, env, resolution_note, requires_python)
+    """
+    run_cfg = (target.get("run") or {})
+    cmd = run_cfg.get("start_cmd", "")
+    if not cmd:
+        return ([], None, {}, None)
+
+    argv = shlex.split(cmd)
+    cwd = target.get("path")
+    env: Dict[str, str] = os.environ.copy()
+    note: Optional[str] = None
+    requires_python: Optional[str] = None
+
+    cwd_path: Optional[Path] = None
+    if cwd:
+        try:
+            cwd_path = Path(cwd)
+        except Exception:
+            cwd_path = None
+
+    # If the project has a pyproject.toml, capture requires-python for runtime gating.
+    if cwd_path and (cwd_path / "pyproject.toml").exists():
+        try:
+            requires_python = _parse_pyproject_requires_python(cwd_path / "pyproject.toml")
+        except Exception:
+            requires_python = None
+
+    # Heuristic for forged Python repos that have a real MCP entrypoint in pyproject.toml.
+    # If the inventory start_cmd is the generic forge stub `python3 mcp_server.py`, prefer the project MCP script.
+    if (
+        cwd_path
+        and len(argv) >= 2
+        and argv[0].endswith("python3")
+        and argv[1] == "mcp_server.py"
+        and (cwd_path / "pyproject.toml").exists()
+    ):
+        pyproject = cwd_path / "pyproject.toml"
+        scripts = _parse_pyproject_scripts(pyproject)
+        mcp_script = scripts.get("notebooklm-mcp")
+        if mcp_script:
+            module = mcp_script.split(":", 1)[0]
+            argv = [argv[0], "-m", module]
+            src_dir = cwd_path / "src"
+            if src_dir.exists():
+                env["PYTHONPATH"] = str(src_dir) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+            note = f"Resolved MCP entrypoint from pyproject.toml: notebooklm-mcp -> -m {module}"
+
+    return (argv, str(cwd_path) if cwd_path else None, env, note, requires_python)
+
 pm = ProjectManager()
 
 @app.route('/health', methods=['GET'])
@@ -196,12 +510,20 @@ def get_status():
     - Resource usage metrics (CPU, RAM, PID)
     - MCP Server inventory status
     """
-    import psutil
     import yaml
-    
+
     servers = []
-    # Capture PID, Name, Cmdline
-    procs = list(psutil.process_iter(['name', 'cmdline', 'pid']))
+    procs = []
+    psutil = None
+    # Capture PID, Name, Cmdline (best-effort; may be blocked in sandboxed environments)
+    try:
+        import psutil as _psutil
+        psutil = _psutil
+        procs = list(psutil.process_iter(['name', 'cmdline', 'pid']))
+    except Exception as e:
+        # Degrade gracefully: still return inventory + core component presence.
+        if session_logger:
+            session_logger.log("WARNING", f"Status degraded: process inspection unavailable ({e})")
     
     def find_process(patterns):
         for p in procs:
@@ -213,9 +535,11 @@ def get_status():
                 pass
         return None
 
-    librarian_proc = find_process(["mcp.py", "nexus-librarian"])
+    librarian_proc = find_process(["mcp.py", "nexus-librarian"]) if psutil else None
     librarian_online = librarian_proc is not None
     core_keywords = ["mcp-injector", "mcp-server-manager", "repo-mcp-packager", "nexus-librarian"]
+    core_components = pm.core_components()
+    core_components["librarian"] = "online" if librarian_online else "stopped"
 
     if pm.inventory_path.exists():
         try:
@@ -227,6 +551,12 @@ def get_status():
                     start_cmd = run_config.get("start_cmd", "")
                     
                     proc = None
+                    # If we previously started this server with an auto-resolved command (e.g., python fallback),
+                    # use that argv to find the running process, otherwise fall back to inventory start_cmd patterns.
+                    last_argv = pm.last_server_cmd.get(s_id)
+                    if last_argv:
+                        parts = [p for p in last_argv if p and len(p) > 2 and not str(p).startswith("-")]
+                        proc = find_process(parts)
                     if "mcp.py" in start_cmd or "librarian" in s_id: proc = librarian_proc
                     elif "gui_bridge.py" in start_cmd:
                         # Self-identification
@@ -236,6 +566,11 @@ def get_status():
                         proc = find_process(parts)
 
                     online = proc is not None
+                    if not online and psutil is None:
+                        # Degraded mode: without process inspection, treat "started this session"
+                        # as online unless we have recorded an exit.
+                        if s_id in pm.last_server_cmd and s_id not in pm.last_server_exit:
+                            online = True
                     
                     # Detailed Metrics
                     stats = {"cpu": 0, "ram": 0, "pid": None}
@@ -254,27 +589,32 @@ def get_status():
                         "status": "online" if online else "stopped",
                         "type": "core" if is_core else run_config.get("kind", "generic"),
                         "metrics": stats,
+                        "last_exit": pm.last_server_exit.get(s_id),
                         "raw": s_data
                     })
         except Exception as e:
             if session_logger: session_logger.log("ERROR", f"Inventory sync failed: {str(e)}")
             pass
 
-    # Global Metrics
-    d = psutil.disk_usage('/')
-    current_metrics = {
-        "cpu": psutil.cpu_percent(interval=None),
-        "memory": psutil.virtual_memory().percent,
-        "ram_total": psutil.virtual_memory().total,
-        "ram_used": psutil.virtual_memory().used,
-        "disk": d.percent,
-        "disk_total": d.total,
-        "disk_used": d.used,
-        "disk_free": d.free,
-        "ts": time.time()
-    }
-    
-    METRIC_HISTORY.append(current_metrics)
+    # Global Metrics (best-effort; may be blocked)
+    current_metrics = {"cpu": 0, "memory": 0, "ram_total": 0, "ram_used": 0, "disk": 0, "disk_total": 0, "disk_used": 0, "disk_free": 0, "ts": time.time()}
+    if psutil:
+        try:
+            d = psutil.disk_usage('/')
+            current_metrics = {
+                "cpu": psutil.cpu_percent(interval=None),
+                "memory": psutil.virtual_memory().percent,
+                "ram_total": psutil.virtual_memory().total,
+                "ram_used": psutil.virtual_memory().used,
+                "disk": d.percent,
+                "disk_total": d.total,
+                "disk_used": d.used,
+                "disk_free": d.free,
+                "ts": time.time()
+            }
+            METRIC_HISTORY.append(current_metrics)
+        except Exception:
+            pass
 
     resource_count = 0
     db_path = pm.app_data_dir / "knowledge.db"
@@ -311,6 +651,7 @@ def get_status():
     return jsonify({
         "activator": "online" if (pm.bin_dir / "mcp-activator").exists() else "missing",
         "librarian": "online" if librarian_online else "stopped",
+        "core_components": core_components,
         "version_status": version_status,
         "posture": posture,
         "pulse": pulse,
@@ -318,7 +659,8 @@ def get_status():
         "history": list(METRIC_HISTORY),
         "servers": servers,
         "resource_count": resource_count,
-        "active_project": pm.active_project
+        "active_project": pm.active_project,
+        "version": __version__
     })
 
 @app.route('/validate', methods=['GET'])
@@ -495,6 +837,7 @@ def mcp_sse():
 def export_report():
     """Generate a high-fidelity HTML report."""
     from flask import render_template_string
+    server_id = request.args.get("server")
     template = """
     <html>
     <head><style>
@@ -514,7 +857,31 @@ def export_report():
     <body>
         <h1>Nexus Audit Report</h1>
         <p><strong>Generated:</strong> {{ time }}</p>
+        {% if server_id %}
+        <p><strong>Target Server:</strong> <code>{{ server_id }}</code></p>
+        {% endif %}
         
+        {% if target %}
+        <div class="card">
+            <h2>Target Server Audit</h2>
+            <table>
+                <tr><th>Field</th><th>Value</th></tr>
+                <tr><td>Name</td><td>{{ target.name }}</td></tr>
+                <tr><td>Status</td><td><span class="{{ 'success' if target.status == 'online' else 'error' }}">{{ target.status }}</span></td></tr>
+                <tr><td>Type</td><td>{{ target.type }}</td></tr>
+                <tr><td>PID</td><td>{{ target.metrics.pid or '-' }}</td></tr>
+                <tr><td>Path</td><td><code>{{ target.raw.path or '' }}</code></td></tr>
+                <tr><td>Start Cmd</td><td><code>{{ (target.raw.run.start_cmd if target.raw.run and target.raw.run.start_cmd else '') }}</code></td></tr>
+                <tr><td>Last Start Log</td><td><code>/server/logs/{{ server_id }}/view</code></td></tr>
+            </table>
+        </div>
+        {% elif server_id %}
+        <div class="card">
+            <h2>Target Server Audit</h2>
+            <p class="warning">Requested server id was not found in inventory: <code>{{ server_id }}</code></p>
+        </div>
+        {% endif %}
+
         <div class="card">
             <h2>System Health</h2>
             <p><strong>Overall Posture:</strong> <span class="{{ 'success' if status.pulse == 'green' else 'error' }}">{{ status.posture }}</span></p>
@@ -564,12 +931,23 @@ def export_report():
     # Gather data
     status_data = get_status().get_json()
     logs_data = get_logs().get_json()
+    target = None
+    if server_id:
+        try:
+            for s in (status_data.get("servers") or []):
+                if s.get("id") == server_id:
+                    target = s
+                    break
+        except Exception:
+            target = None
     
     html = render_template_string(template, 
                                   time=datetime.datetime.now().isoformat(),
                                   project=pm.active_project,
                                   status=status_data,
-                                  logs=logs_data)
+                                  logs=logs_data,
+                                  server_id=server_id,
+                                  target=target)
     return html
 
 @app.route('/nexus/catalog', methods=['GET'])
@@ -699,6 +1077,13 @@ def project_history():
 def system_update_nexus():
     """Update the Nexus Suite (git pull + reinstall)."""
     try:
+        payload = request.get_json(silent=True) or {}
+        if bool(payload.get("dry_run")):
+            repo_dir = Path.cwd()
+            if (repo_dir / ".git").exists():
+                return jsonify({"success": True, "dry_run": True, "cmd": ["git", "pull"], "cwd": str(repo_dir)})
+            return jsonify({"success": False, "dry_run": True, "error": "Not a git repository."}), 400
+
         # Assumes running from source
         root = pm.app_data_dir.parent # strict assumption, usage varies
         # Better: use the current working directory if it's a git repo
@@ -740,9 +1125,23 @@ def nexus_help():
 def system_update_python():
     """Update Python dependencies."""
     try:
-        subprocess.Popen([sys.executable, "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"], 
-                         cwd=Path.cwd(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return jsonify({"success": True, "message": "Pip upgrade initiated in background."})
+        payload = request.get_json(silent=True) or {}
+        dry_run = bool(payload.get("dry_run"))
+        repo_dir = Path.cwd()
+        if (repo_dir / "pyproject.toml").exists():
+            cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "-e", "."]
+        elif (repo_dir / "requirements.txt").exists():
+            cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"]
+        else:
+            return jsonify({"success": False, "error": "No pyproject.toml or requirements.txt found in current repo."}), 400
+
+        if dry_run:
+            return jsonify({"success": True, "dry_run": True, "cmd": cmd, "cwd": str(repo_dir)})
+
+        subprocess.Popen(cmd, cwd=repo_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if session_logger:
+            session_logger.log("COMMAND", "Python dependency upgrade initiated", suggestion="Upgrade running in background.", metadata={"cmd": cmd, "cwd": str(repo_dir)})
+        return jsonify({"success": True, "message": "Python dependency upgrade initiated in background.", "cmd": cmd, "cwd": str(repo_dir)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -830,15 +1229,298 @@ def server_control():
     if not cmd: return jsonify({"error": f"No {action} command defined"}), 400
 
     try:
-        # For now, simplistic start/stop
-        subprocess.Popen(shlex.split(cmd), start_new_session=True)
+        if action != "start":
+            subprocess.Popen(shlex.split(cmd), start_new_session=True)
+            if session_logger:
+                session_logger.log("COMMAND", f"Server {s_id}: {action}", suggestion=f"Triggered: {cmd}")
+            return jsonify({"success": True})
+
+        argv, cwd, env, note, requires_python = _resolve_server_run(target)
+        if not argv:
+            return jsonify({"error": f"No start command resolved for '{s_id}'"}), 400
+        if env is None:
+            env = os.environ.copy()
+
+        # Runtime gating: if pyproject declares requires-python and the chosen interpreter
+        # does not satisfy it, block start with a deterministic error (no "Start lies").
+        min_py = _min_python_from_spec(requires_python)
+        if min_py:
+            py_exe = str(argv[0])
+            ver = _python_version_tuple(py_exe, cwd, env)
+            if ver and (ver[0], ver[1]) < min_py:
+                fallback = _find_python_at_least((min_py[0], min_py[1]), cwd, env, exclude=str(argv[0]))
+                if fallback:
+                    old = argv[0]
+                    argv = [fallback] + list(argv[1:])
+                    note = (note + " | " if note else "") + f"Auto-selected {fallback} to satisfy requires-python {requires_python} (was {old})"
+                else:
+                    msg = f"Python {ver[0]}.{ver[1]}.{ver[2]} is too old for requires-python '{requires_python}'."
+                    if session_logger:
+                        session_logger.log("ERROR", f"Blocked start for {s_id}: python mismatch", metadata={"requires_python": requires_python, "python": ver, "cmd": argv, "cwd": cwd})
+                    return jsonify({
+                        "success": False,
+                        "error": "Runtime mismatch: Python version too old",
+                        "detail": msg,
+                        "requires_python": requires_python,
+                        "python": {"major": ver[0], "minor": ver[1], "patch": ver[2]},
+                        "resolved_cmd": argv,
+                        "cwd": cwd,
+                        "note": note,
+                    }), 409
+
+        log_dir = pm.app_data_dir / "server_logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        setup_log_path = None
+
+        # If this is a real server project directory, prefer a per-server venv so dependencies
+        # exist even when we auto-select a newer system Python to satisfy requires-python.
+        try:
+            server_path = target.get("path")
+            server_dir = Path(server_path) if server_path else None
+            if server_dir and server_dir.exists() and (server_dir / "pyproject.toml").exists():
+                venv_python, setup_log_path = _ensure_server_venv(server_dir, str(argv[0]), log_dir)
+                if venv_python:
+                    old = argv[0]
+                    argv = [venv_python] + list(argv[1:])
+                    note = (note + " | " if note else "") + f"Using per-server venv python ({venv_python}) (was {old})"
+        except Exception:
+            pass
+
+        def _spawn_with_log(spawn_argv: list[str], spawn_note: Optional[str]) -> Tuple[subprocess.Popen, Path]:
+            stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            lp = log_dir / f"{s_id}_{stamp}.log"
+            with open(lp, "w", encoding="utf-8") as f:
+                f.write(f"--- SERVER: {s_id} ---\n")
+                f.write("--- ACTION: start ---\n")
+                f.write(f"--- CWD: {cwd or '(none)'} ---\n")
+                f.write(f"--- CMD: {' '.join(spawn_argv)} ---\n")
+                if requires_python:
+                    f.write(f"--- REQUIRES_PYTHON: {requires_python} ---\n")
+                if setup_log_path:
+                    f.write(f"--- SETUP_LOG: {setup_log_path} ---\n")
+                if spawn_note:
+                    f.write(f"--- RESOLVE: {spawn_note} ---\n")
+                f.write("\n")
+                p = subprocess.Popen(
+                    spawn_argv,
+                    start_new_session=True,
+                    cwd=cwd,
+                    env=env,
+                    # MCP servers are stdio-based; if stdin is inherited from a closed/non-tty parent,
+                    # many servers will detect EOF and exit. Keep stdin open to prevent immediate shutdown.
+                    stdin=subprocess.PIPE,
+                    stdout=f,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+            def _monitor_exit(proc: subprocess.Popen, log_path: Path, argv_snapshot: list[str]) -> None:
+                try:
+                    rc = proc.wait()
+                except Exception:
+                    return
+                meta = {
+                    "returncode": rc,
+                    "ts": time.time(),
+                    "cmd": argv_snapshot,
+                    "log_path": str(log_path),
+                }
+                pm.last_server_exit[s_id] = meta
+                try:
+                    with open(log_path, "a", encoding="utf-8") as f2:
+                        when = datetime.datetime.now().isoformat()
+                        f2.write("\n")
+                        f2.write(f"--- EXIT: {rc} ---\n")
+                        f2.write(f"--- EXIT_TS: {when} ---\n")
+                except Exception:
+                    pass
+
+            t = threading.Thread(target=_monitor_exit, args=(p, lp, list(spawn_argv)), daemon=True)
+            t.start()
+            return p, lp
+
+        proc, log_path = _spawn_with_log(argv, note)
+        pm.last_server_cmd[s_id] = argv
+        pm.last_server_start[s_id] = time.time()
+
+        def _retry_with_newer_python(first_log_path: Path, reason: str) -> Optional[Tuple[subprocess.Popen, Path, list[str], str]]:
+            fallback = _find_python_at_least((3, 10), cwd, env, exclude=str(argv[0]))
+            if not fallback:
+                return None
+            retry_argv = [fallback] + list(argv[1:])
+            retry_note = (note + " | " if note else "") + f"Auto-retry with {fallback} due to {reason}"
+            if session_logger:
+                session_logger.log("WARNING", f"Retrying start for {s_id} with newer python", metadata={"from": str(argv[0]), "to": fallback, "first_log": str(first_log_path), "reason": reason})
+            p2, lp2 = _spawn_with_log(retry_argv, retry_note)
+            return (p2, lp2, retry_argv, retry_note)
+
+        # Fast failure detection: if the process exits immediately, return an error
+        # so the UI doesn't claim "started" when it actually crashed.
+        try:
+            # Poll a few times to avoid a race where the child exits just after a single sleep.
+            rc = None
+            for _ in range(12):
+                time.sleep(0.2)
+                rc = proc.poll()
+                if rc is not None:
+                    break
+            if rc is not None:
+                # If the log indicates a Python<3.10 crash due to PEP604 unions, attempt a deterministic relaunch
+                # with a Python>=3.10 interpreter (if present). This fixes common "starts then stops" cases like notebooklm.
+                try:
+                    tail = log_path.read_text(encoding="utf-8", errors="replace")[-8000:]
+                except Exception:
+                    tail = ""
+                if _looks_like_python_lt_310_union_error(tail):
+                    retried = _retry_with_newer_python(log_path, "Python<3.10 union crash signature")
+                    if retried:
+                        proc2, log_path2, retry_argv, retry_note = retried
+                        pm.last_server_cmd[s_id] = retry_argv
+                        pm.last_server_start[s_id] = time.time()
+                        # Wait for immediate exit again
+                        rc2 = None
+                        for _ in range(12):
+                            time.sleep(0.2)
+                            rc2 = proc2.poll()
+                            if rc2 is not None:
+                                break
+                        if rc2 is None:
+                            if session_logger:
+                                session_logger.log("COMMAND", f"Server {s_id}: start", suggestion=f"Started via fallback python. Logs: {log_path2}")
+                            return jsonify({
+                                "success": True,
+                                "log_path": str(log_path2),
+                                "resolved_cmd": retry_argv,
+                                "cwd": cwd,
+                                "note": retry_note,
+                                "retry": {"reason": "python<3.10 union crash signature", "first_log_path": str(log_path)},
+                            })
+                        if session_logger:
+                            session_logger.log("ERROR", f"Server {s_id} exited immediately after retry", metadata={"returncode": rc2, "log_path": str(log_path2)})
+                            return jsonify({
+                                "success": False,
+                                "error": "Server exited immediately after start (python retry attempted)",
+                                "returncode": rc2,
+                                "log_path": str(log_path2),
+                                "resolved_cmd": retry_argv,
+                                "cwd": cwd,
+                                "note": retry_note,
+                                "retry": {"reason": "python<3.10 union crash signature", "first_log_path": str(log_path)},
+                            }), 500
+
+                if session_logger:
+                    session_logger.log("ERROR", f"Server {s_id} exited immediately", metadata={"returncode": rc, "log_path": str(log_path)})
+                return jsonify({"success": False, "error": "Server exited immediately after start", "returncode": rc, "log_path": str(log_path), "resolved_cmd": argv, "cwd": cwd, "note": note}), 500
+
+            # If the process is still running but the log already contains a fatal traceback,
+            # fail fast so the UI doesn't claim "started" while the child is crashing.
+            try:
+                # Give the child a moment to flush stderr/stdout to the file.
+                # This is intentionally >1s to catch import-time crashes that occur after dependency loading.
+                time.sleep(1.5)
+                tail = log_path.read_text(encoding="utf-8", errors="replace")[-8000:]
+                if "Traceback (most recent call last):" in tail:
+                    if _looks_like_python_lt_310_union_error(tail):
+                        retried = _retry_with_newer_python(log_path, "Python<3.10 union crash signature")
+                        if retried:
+                            proc2, log_path2, retry_argv, retry_note = retried
+                            pm.last_server_cmd[s_id] = retry_argv
+                            pm.last_server_start[s_id] = time.time()
+                            rc2 = None
+                            for _ in range(12):
+                                time.sleep(0.2)
+                                rc2 = proc2.poll()
+                                if rc2 is not None:
+                                    break
+                            if rc2 is None:
+                                if session_logger:
+                                    session_logger.log("COMMAND", f"Server {s_id}: start", suggestion=f"Started via fallback python. Logs: {log_path2}")
+                                return jsonify({
+                                    "success": True,
+                                    "log_path": str(log_path2),
+                                    "resolved_cmd": retry_argv,
+                                    "cwd": cwd,
+                                    "note": retry_note,
+                                    "retry": {"reason": "python<3.10 union crash signature", "first_log_path": str(log_path)},
+                                })
+                            if session_logger:
+                                session_logger.log("ERROR", f"Server {s_id} exited immediately after retry", metadata={"returncode": rc2, "log_path": str(log_path2)})
+                            return jsonify({
+                                "success": False,
+                                "error": "Server produced traceback during start (python retry attempted)",
+                                "returncode": rc2,
+                                "log_path": str(log_path2),
+                                "resolved_cmd": retry_argv,
+                                "cwd": cwd,
+                                "note": retry_note,
+                                "retry": {"reason": "python<3.10 union crash signature", "first_log_path": str(log_path)},
+                            }), 500
+                    if session_logger:
+                        session_logger.log("ERROR", f"Server {s_id} produced traceback on start", metadata={"log_path": str(log_path)})
+                    return jsonify({"success": False, "error": "Server produced traceback during start", "log_path": str(log_path), "resolved_cmd": argv, "cwd": cwd, "note": note}), 500
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         if session_logger:
-            session_logger.log("COMMAND", f"Server {s_id}: {action}", suggestion=f"Triggered: {cmd}")
-        return jsonify({"success": True})
+            session_logger.log("COMMAND", f"Server {s_id}: {action}", suggestion=f"Started. Logs: {log_path}")
+
+        return jsonify({"success": True, "log_path": str(log_path), "resolved_cmd": argv, "cwd": cwd, "note": note})
     except Exception as e:
         if session_logger:
             session_logger.log("ERROR", f"Control failed for {s_id}: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/server/logs/<server_id>', methods=['GET'])
+def server_logs_latest(server_id: str):
+    """
+    Returns the most recent captured start log for a server (tail only).
+    Intended for quick debugging when a forged server immediately exits.
+    """
+    # Basic traversal guard
+    if ".." in server_id or "/" in server_id:
+        return jsonify({"error": "Bad server id"}), 400
+
+    log_dir = pm.app_data_dir / "server_logs"
+    if not log_dir.exists():
+        return jsonify({"error": "No server logs directory"}), 404
+
+    candidates = sorted(log_dir.glob(f"{server_id}_*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not candidates:
+        return jsonify({"error": "No logs found"}), 404
+
+    log_path = candidates[0]
+    try:
+        # Tail last N lines to keep payload bounded
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        tail = lines[-200:]
+        return jsonify({
+            "server_id": server_id,
+            "log_path": str(log_path),
+            "mtime": log_path.stat().st_mtime,
+            "lines": tail,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/server/logs/<server_id>/view', methods=['GET'])
+def server_logs_latest_view(server_id: str):
+    """
+    Human-friendly view of the latest server log.
+    """
+    data = server_logs_latest(server_id)
+    # If server_logs_latest returned an error response, pass it through.
+    try:
+        status_code = data[1]
+        payload = data[0].get_json()
+        return jsonify(payload), status_code
+    except Exception:
+        pass
+
+    payload = data.get_json()
+    lines = payload.get("lines", [])
+    escaped = "\n".join(lines)
+    return f"<pre style='white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace'>{escaped}</pre>"
 
 # Server Management endpoints (passing through PM paths)
 @app.route('/server/add', methods=['POST'])
@@ -948,7 +1630,12 @@ def librarian_roots():
     try:
         conn = sqlite3.connect(db_path)
         if request.method == 'POST':
-            path = request.json.get("path")
+            path_raw = request.json.get("path")
+            if not path_raw:
+                return jsonify({"error": "Path required"}), 400
+            path = _normalize_user_path(path_raw)
+            if Path(path).is_file():
+                return jsonify({"error": "Scan roots must be directories. Use 'Add Resource' for files."}), 400
             conn.execute("INSERT OR IGNORE INTO scan_roots (path) VALUES (?)", (path,))
             conn.commit()
             if session_logger:
@@ -966,6 +1653,39 @@ def librarian_roots():
         conn.close()
         return jsonify([{"id": r[0], "path": r[1], "created_at": r[2]} for r in rows])
     except Exception as e: return jsonify({"error": str(e)}), 500
+
+@app.route('/librarian/add', methods=['POST'])
+def librarian_add_resource():
+    """
+    Index a single resource (local file path or URL) via the Librarian.
+    Accepts paths with spaces and '~' and avoids shell splitting.
+    """
+    body = request.json or {}
+    resource_raw = body.get("resource") or body.get("url") or body.get("path")
+    if not resource_raw:
+        return jsonify({"error": "resource required"}), 400
+
+    resource = str(resource_raw).strip()
+    if not _is_url(resource):
+        resource = _normalize_user_path(resource)
+        p = Path(resource)
+        if not p.exists():
+            return jsonify({"error": f"File not found: {resource}"}), 404
+
+    librarian_script = BASE_DIR.parent / "mcp-link-library" / "mcp.py"
+    if not librarian_script.exists():
+        return jsonify({"error": f"Librarian script not found at {librarian_script}"}), 500
+
+    try:
+        cmd = [sys.executable, str(librarian_script), "--add", resource]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if session_logger:
+            session_logger.log_command(" ".join(cmd), "SUCCESS" if res.returncode == 0 else "FAILED", result=(res.stdout or res.stderr))
+        return jsonify({"success": res.returncode == 0, "stdout": res.stdout, "stderr": res.stderr, "resource": resource})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Indexing timed out"}), 504
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/librarian/watcher', methods=['GET', 'POST'])
 def librarian_watcher():
@@ -1166,8 +1886,9 @@ if __name__ == '__main__':
     import os
     if os.environ.get("NEXUS_HEADLESS") == "1":
         print(f"🚀 Nexus GUI Bridge (headless) — port 5001")
-        app.run(host='127.0.0.1', port=5001, debug=False)
+        host = os.environ.get("NEXUS_BIND", "127.0.0.1")
+        port = int(os.environ.get("NEXUS_PORT", "5001"))
+        app.run(host=host, port=port, debug=False)
     else:
         print("⚠️  Use  'python3 nexus_tray.py'  or double-click 'Start Nexus.command' on your Desktop.")
         print("   Set NEXUS_HEADLESS=1 to force terminal mode (CI/servers only).")
-

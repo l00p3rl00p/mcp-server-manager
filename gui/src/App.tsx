@@ -72,6 +72,7 @@ const App: React.FC = () => {
   const [inventoryHistory, setInventoryHistory] = useState<any[]>([]);
   const [commandCatalog, setCommandCatalog] = useState<any[]>([]);
   const [catalogInputs, setCatalogInputs] = useState<any>({});
+  const [quickIndexResource, setQuickIndexResource] = useState<string>('');
   const [inventoryView, setInventoryView] = useState<'card' | 'list'>(() => {
     return (localStorage.getItem('nexus_inventory_view') as 'card' | 'list') || 'card';
   });
@@ -320,6 +321,10 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
+
+        <div style={{ marginTop: 'auto', padding: '0 16px', fontSize: '10px', color: 'var(--text-dim)', opacity: 0.5, letterSpacing: '0.5px' }}>
+          CORE v{systemStatus?.version || '0.0.0'}
+        </div>
       </aside>
 
 
@@ -400,6 +405,24 @@ const App: React.FC = () => {
                 </div>
               </div>
 
+              <section className="glass-card" style={{ padding: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h3 style={{ margin: 0, display: 'flex', gap: '10px', alignItems: 'center' }}><ShieldCheck size={18} /> Core Components</h3>
+                  <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>Always visible</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                  {Object.entries(systemStatus?.core_components || {}).map(([k, v]) => (
+                    <div key={k} className="glass-card" style={{ padding: '12px', background: 'rgba(255,255,255,0.03)' }}>
+                      <div style={{ fontSize: '11px', letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{k.replace(/_/g, ' ')}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
+                        <span style={{ fontWeight: 600 }}>{String(v)}</span>
+                        <span className={`pulse-dot pulse-${v === 'online' ? 'green' : v === 'stopped' ? 'yellow' : 'red'}`} style={{ width: 6, height: 6 }}></span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
               <section className="glass-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                   <h3 style={{ margin: 0 }}>Active Inventory</h3>
@@ -449,6 +472,11 @@ const App: React.FC = () => {
                             {/* Audit Button (New Outcome) */}
                             <button className="nav-item" style={{ padding: '8px' }} onClick={() => window.open(`${API_BASE}/export/report?server=${s.id}`, '_blank')} title="Audit Log">
                               <FileText size={18} />
+                            </button>
+
+                            {/* Last Start Log */}
+                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => window.open(`${API_BASE}/server/logs/${s.id}/view`, '_blank')} title="View last start log">
+                              <Terminal size={18} />
                             </button>
 
                             <button className="nav-item" style={{ padding: '8px' }} onClick={() => setSelectedItem(s.raw)} title="Inspect">
@@ -1042,6 +1070,14 @@ const App: React.FC = () => {
                 <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: '8px 0 20px' }}>Registered scan roots are indexed by the Nexus Librarian.</p>
                 <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
                   <input className="glass-card" style={{ flex: 1, padding: '12px 16px', background: 'rgba(0,0,0,0.3)' }} id="root-entry" placeholder="Absolute local path" />
+                  <button className="nav-item" style={{ padding: '0 16px' }} onClick={async () => {
+                    try {
+                      const res = await fetch(API_BASE + '/os/pick_folder', { method: 'POST' });
+                      const d = await res.json().catch(() => ({}));
+                      if (!res.ok || !d.success) return addNotification(d.error || "Picker failed.", "error");
+                      (document.getElementById('root-entry') as HTMLInputElement).value = d.path || '';
+                    } catch (e) { addNotification(String(e), 'error'); }
+                  }}>Browse…</button>
                   <button className="nav-item badge-success" style={{ padding: '0 24px' }} onClick={async () => {
                     const p = (document.getElementById('root-entry') as HTMLInputElement).value;
                     if (!p) return addNotification("Path cannot be empty.", "error");
@@ -1067,6 +1103,48 @@ const App: React.FC = () => {
                       }} />
                     </div>
                   ))}
+                </div>
+              </section>
+
+              <section className="glass-card">
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><Library size={20} color="var(--success)" /> Quick Index (File or URL)</h3>
+                <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: '8px 0 20px' }}>
+                  Paste a local file path or URL. Supports spaces and <code>~/</code> paths.
+                </p>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <input
+                    className="glass-card"
+                    style={{ flex: 1, padding: '12px 16px', background: 'rgba(0,0,0,0.3)' }}
+                    value={quickIndexResource}
+                    onChange={e => setQuickIndexResource(e.target.value)}
+                    placeholder='e.g. "~/developer/dropbox/ComplexEventProcessing Refined.pdf"'
+                  />
+                  <button className="nav-item" style={{ padding: '0 16px' }} onClick={async () => {
+                    try {
+                      const res = await fetch(API_BASE + '/os/pick_file', { method: 'POST' });
+                      const d = await res.json().catch(() => ({}));
+                      if (!res.ok || !d.success) return addNotification(d.error || "Picker failed.", "error");
+                      setQuickIndexResource(d.path || '');
+                    } catch (e) { addNotification(String(e), 'error'); }
+                  }}>Pick File…</button>
+                  <button className="nav-item badge-success" style={{ padding: '0 24px' }} onClick={async () => {
+                    const r = quickIndexResource.trim();
+                    if (!r) return addNotification("Resource cannot be empty.", "error");
+                    addNotification("Indexing resource...", "info");
+                    try {
+                      const res = await fetch(API_BASE + '/librarian/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resource: r }) });
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok || data.success === false) {
+                        addNotification(data.error || data.stderr || "Index failed.", "error");
+                        return;
+                      }
+                      addNotification("Indexed successfully.", "success");
+                      setQuickIndexResource('');
+                      fetchData();
+                    } catch (e) {
+                      addNotification(String(e), "error");
+                    }
+                  }}>Index</button>
                 </div>
               </section>
 

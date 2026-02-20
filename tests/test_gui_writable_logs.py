@@ -2,6 +2,10 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 
 class TestGuiWritableLogs(unittest.TestCase):
     def test_active_logs_dir_is_writable(self):

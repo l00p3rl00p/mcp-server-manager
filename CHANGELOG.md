@@ -1,5 +1,11 @@
 # Changelog - MCP Observer (mcp-server-manager)
 
+## [3.3.1] - 2026-02-20
+- **Deterministic Server Start**: Added runtime selection + per-server venv setup to prevent “start lies” and missing-dependency crashes.
+- **Truthful Logs**: Start logs now include resolved command, requires-python, setup-log pointers, and exit markers.
+- **Maintenance Endpoints**: Added dry-run support and fixed python upgrade to use `pyproject.toml` editable installs.
+- **OS Navigation (GUI)**: Added `/os/pick_file` and `/os/pick_folder` endpoints and wired GUI “Browse…”/“Pick File…” buttons (non-headless only).
+
 ## [3.3.0] - 2026-02-19
 - **Core Resilience**: `nexus-librarian` (and other Type-0 dependencies) now auto-start if missing when the GUI launches.
 - **Inline Injection**: Replaced the blocking Injection Modal with a non-intrusive "Accordion Drawer" directly inside the Server Card.

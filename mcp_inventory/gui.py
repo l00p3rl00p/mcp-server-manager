@@ -114,6 +114,12 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
             self.api_toggle_server()
             return
 
+        # API: Trigger Action (health/scan/etc)
+        if path.startswith("/api/action/"):
+            command = path[len("/api/action/"):]
+            self.api_trigger_action(command)
+            return
+
         self.send_error(404, "Not Found")
 
     def api_get_state(self, resource: str):

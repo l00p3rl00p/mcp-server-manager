@@ -89,9 +89,15 @@ class ForgeEngine:
 
     def _copy_local(self, source: str, target_dir: Path):
         """Copies a local folder into the central server store."""
-        src_path = Path(source).resolve()
+        src_path = Path(source).expanduser().resolve()
         if not src_path.exists():
             raise FileNotFoundError(f"Local source {src_path} not found")
+
+        if src_path.is_file():
+            raise ValueError(
+                f"Forge expects a folder or git repo, but received a file: {src_path}. "
+                f"To index documents, use the Librarian 'Add Resource' flow instead."
+            )
             
         if target_dir.exists():
             print(f"⚠️  Target {target_dir} exists. Overwriting...")

@@ -24,7 +24,8 @@ PROJECT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(PROJECT_DIR))
 
 # ── Port must match gui_bridge.py ──
-PORT = 5001
+PORT = int(os.environ.get("NEXUS_PORT", "5001"))
+HOST = os.environ.get("NEXUS_BIND", "127.0.0.1")
 DASHBOARD_URL = f"http://localhost:{PORT}"
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -51,10 +52,14 @@ def _make_icon():
 def _run_flask():
     """Import and start the Flask app from gui_bridge.py."""
     try:
-        # Import the 'app' object that gui_bridge.py already defines
+        from gui_bridge import app, session_logger
         if session_logger:
-            session_logger.log("LIFECYCLE", "System Tray GUI Started", suggestion="Dashboard now available at http://localhost:5001")
-        app.run(host='127.0.0.1', port=5001, debug=False, use_reloader=False)
+            session_logger.log(
+                "LIFECYCLE",
+                "System Tray GUI Started",
+                suggestion=f"Dashboard now available at {DASHBOARD_URL}",
+            )
+        app.run(host=HOST, port=PORT, debug=False, use_reloader=False)
     except Exception as exc:
         # Log to stderr; don't crash the tray
         print(f"[nexus_tray] Flask error: {exc}", file=sys.stderr)

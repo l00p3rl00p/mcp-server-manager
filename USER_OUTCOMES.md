@@ -55,7 +55,7 @@ As a user, I want:
 
 To fully align with these outcomes, the following enhancements are planned:
 
-*   **GUI Reliability (Target 95%+)**: ~~Transition GUI from a blocking process to a background service with PID management.~~ **DELIVERED (v3.2.1)** — System tray (`pystray`) + Desktop launcher. Flask runs as daemon thread. No terminal required.
+*   **GUI Reliability (Target 95%+)**: ~~Transition GUI from a blocking process to a background service with PID management.~~ **IMPLEMENTED (UAT EVIDENCE PENDING)** — System tray (`pystray`) + Desktop launcher. Flask runs as daemon thread. No terminal required.
 *   **Librarian Synergy**: Implement a dynamic watcher so the Librarian indexes changes in real-time, not just on installation.
 *   **Operational Awareness**: Add "version health" checks to the GUI dashboard to visually signal when a `--sync` is required.
 
@@ -102,11 +102,22 @@ To fully align with these outcomes, the following enhancements are planned:
 * **Isolation of Concerns**: Execution logic should run in an isolated environment, keeping host system secrets (SSH keys, unrelated tokens) protected from untrusted code. (DELIVERED)
 * **Cost Transparency**: Users must see the "Token Weight" of every interaction to make informed decisions. (DELIVERED)
 * **ATP Compliance**: Shell operations must default to `noclobber` to prevent accidental data loss. (DELIVERED)
-* **Non-Blocking Interfaces**: Critical actions (like Injection) must utilize **inline expansion** (accordions/drawers) instead of center-screen modals. The UI must NEVER obscure real-time error toasts or logs. (DELIVERED v3.3)
+* **Non-Blocking Interfaces**: Critical actions (like Injection) must utilize **inline expansion** (accordions/drawers) instead of center-screen modals. The UI must NEVER obscure real-time error toasts or logs. (IMPLEMENTED — UAT EVIDENCE PENDING)
 * **Lifecycle Persistence**: Servers must maintain their last known state (Running/Stopped) across Nexus restarts. New servers auto-start upon creation. Unexpected stops must trigger a logged error event.
-* **Contextual Help**: Operation tab 'Help/Info' buttons must be scoped to the specific card (e.g., inside 'Custom Run') to avoid UI clutter. (DELIVERED v3.3)
+* **Contextual Help**: Operation tab 'Help/Info' buttons must be scoped to the specific card (e.g., inside 'Custom Run') to avoid UI clutter. (IMPLEMENTED — UAT EVIDENCE PENDING)
 * **Deep Observability**: A dedicated Logging View is required. Users must be able to view detailed, per-server `stdout/stderr` streams. A global **"Nexus System Log"** must be prominently available to debug the orchestrator itself, distinct from the ephemeral Command Hub output.
-* **Contextual Audit**: The 'Audit Report' capability must be available per-component (Server/Librarian/System) rather than a generic global action. (DELIVERED v3.3)
-* **Core Reliability**: The `nexus-librarian` and other Type-0 Core Dependency MUST auto-start with the GUI and auto-restart on failure. A "Stopped" CORE is a System Defect. (DELIVERED v3.3)
-* **Managed Mirror Policy**: The industrial runtime environment (`~/.mcp-tools`) is a **Managed Mirror**. Any local changes in the mirror are considered "drift" and will be automatically overwritten by the workspace or GitHub on a `--sync` to ensure deterministic stability. (DELIVERED v3.3)
-* **Zero-Friction Maintenance**: Common maintenance tasks (Install, Sync, Dashboard, Health) must be accessible via OS-native double-clickable scripts located at the project root. (DELIVERED v3.3)
+* **Contextual Audit**: The 'Audit Report' capability must be available per-component (Server/Librarian/System) rather than a generic global action. (IMPLEMENTED — UAT EVIDENCE PENDING)
+* **Core Reliability**: The `nexus-librarian` and other Type-0 Core Dependency MUST auto-start with the GUI and auto-restart on failure. A "Stopped" CORE is a System Defect. (IMPLEMENTED — UAT EVIDENCE PENDING)
+* **Managed Mirror Policy**: The industrial runtime environment (`~/.mcp-tools`) is a **Managed Mirror**. Any local changes in the mirror are considered "drift" and will be automatically overwritten by the workspace or GitHub on a `--sync` to ensure deterministic stability. (IMPLEMENTED — UAT EVIDENCE PENDING)
+* **Zero-Friction Maintenance**: Common maintenance tasks (Install, Sync, Dashboard, Health) must be accessible via OS-native double-clickable scripts located at the project root. (IMPLEMENTED — UAT EVIDENCE PENDING)
+
+---
+
+## ✅ Evidence Links (Verified)
+
+These outcomes have repo-wide evidence in the root `EVIDENCE.md` (not just code presence):
+
+* **Cost Transparency / Token Weight**: Unit 23
+* **ATP Shell Safety (`noclobber`)**: Unit 24
+* **ATP Sandbox Isolation + Strawberry Test**: Unit 22
+* **ATP Tooling (`search_api`, `execute_code`, `--json`, `/llm/batch`)**: Unit 20
