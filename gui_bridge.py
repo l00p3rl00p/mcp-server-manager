@@ -1422,14 +1422,33 @@ def export_logs():
 @app.route('/system/uninstall', methods=['POST'])
 def system_uninstall():
     try:
-        uninstaller = NEXUS_HOME.parent / "repo-mcp-packager" / "uninstall.py"
-        if not uninstaller.exists(): return jsonify({"error": "Uninstaller not found"}), 404
+        def _find_uninstaller() -> Optional[Path]:
+            # 1) Managed mirror (runtime truth)
+            p1 = (NEXUS_HOME / "repo-mcp-packager" / "uninstall.py").resolve()
+            if p1.exists():
+                return p1
+            # 2) Workspace (developer truth): suite root is parent of mcp-server-manager
+            try:
+                suite_root = Path(__file__).resolve().parent.parent
+                p2 = (suite_root / "repo-mcp-packager" / "uninstall.py").resolve()
+                if p2.exists():
+                    return p2
+            except Exception:
+                pass
+            return None
+
+        uninstaller = _find_uninstaller()
+        if not uninstaller:
+            return jsonify({"success": False, "error": "Uninstaller not found"}), 404
         if session_logger:
             session_logger.log("COMMAND", "Factory Reset Initiated", suggestion="Purging all suite data and settings.")
         payload = request.json or {}
         purge_data = bool(payload.get("purge_data", True))
+        purge_env = bool(payload.get("purge_env", False))
         kill_venv = bool(payload.get("kill_venv", True))
         detach_clients = bool(payload.get("detach_clients", False))
+        detach_managed_servers = bool(payload.get("detach_managed_servers", False))
+        detach_suite_tools = bool(payload.get("detach_suite_tools", False))
         remove_path_block = bool(payload.get("remove_path_block", False))
         remove_wrappers = bool(payload.get("remove_wrappers", False))
         dry_run = bool(payload.get("dry_run", False))
@@ -1437,10 +1456,16 @@ def system_uninstall():
         cmd = [sys.executable, str(uninstaller), "--yes"]
         if purge_data:
             cmd.append("--purge-data")
+        if purge_env:
+            cmd.append("--purge-env")
         if kill_venv:
             cmd.append("--kill-venv")
         if detach_clients:
             cmd.append("--detach-clients")
+        if detach_managed_servers:
+            cmd.append("--detach-managed-servers")
+        if detach_suite_tools:
+            cmd.append("--detach-suite-tools")
         if remove_path_block:
             cmd.append("--remove-path-block")
         if remove_wrappers:

@@ -101,11 +101,19 @@ const App: React.FC = () => {
   const [purgePreview, setPurgePreview] = useState<{ ok: boolean; stdout: string; stderr: string } | null>(null);
   const [purgePreviewLoading, setPurgePreviewLoading] = useState(false);
   const [purgeOptions, setPurgeOptions] = useState({
-    purge_data: true,
+    // Default reset: environments only (keep suite installed).
+    purge_data: false,
+    purge_env: true,
     kill_venv: true,
-    detach_clients: true,
-    remove_path_block: true,
-    remove_wrappers: true,
+    // Detach defaults:
+    // - managed servers: yes (their envs are being reset)
+    // - suite tools: no (keep Commander + suite tools available)
+    detach_clients: false,
+    detach_managed_servers: true,
+    detach_suite_tools: false,
+    // PATH cleanup is opt-in (do not surprise users).
+    remove_path_block: false,
+    remove_wrappers: false,
   });
 
   const splitCmd = (cmd: string): string[] => {
@@ -1435,20 +1443,15 @@ const App: React.FC = () => {
 
               <div className="glass-card" style={{ border: '1px solid #ef4444', background: 'rgba(239, 68, 68, 0.05)', padding: '24px' }}>
                 <h3 style={{ color: '#ef4444', marginBottom: '8px' }}>Critical Maintenance</h3>
-                <p style={{ fontSize: '13px', color: 'var(--text-dim)', marginBottom: '24px' }}>FACTORY RESET: This action will permanently remove all Nexus binaries and data.</p>
+                <p style={{ fontSize: '13px', color: 'var(--text-dim)', marginBottom: '24px' }}>
+                  Factory Reset is guided. Default is a safe environment reset; full wipe is optional.
+                </p>
                 <button
                   className="nav-item"
                   style={{ borderColor: '#ef4444', color: '#ef4444', width: '100%', padding: '14px', fontWeight: 700 }}
                   onClick={() => {
                     setPurgeConfirmText("");
                     setPurgePreview(null);
-                    setPurgeOptions({
-                      purge_data: true,
-                      kill_venv: true,
-                      detach_clients: true,
-                      remove_path_block: true,
-                      remove_wrappers: true,
-                    });
                     setPurgeModalOpen(true);
                   }}
                 >
@@ -1505,24 +1508,46 @@ const App: React.FC = () => {
                     <div style={{ minWidth: 0 }}>
                       <b style={{ fontSize: '12px' }}>Preset</b>
                       <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' }}>
-                        Full wipe = “new user” reset: data + environments + client detach + PATH cleanup.
+                        Defaults to env reset (keeps suite). Full wipe is for a clean reinstall.
                       </div>
                     </div>
-                    <button
-                      className="nav-item"
-                      style={{ borderColor: 'rgba(239,68,68,0.6)', color: '#ef4444' }}
-                      onClick={() =>
-                        setPurgeOptions({
-                          purge_data: true,
-                          kill_venv: true,
-                          detach_clients: true,
-                          remove_path_block: true,
-                          remove_wrappers: true,
-                        })
-                      }
-                    >
-                      Full wipe
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <button
+                        className="nav-item"
+                        onClick={() =>
+                          setPurgeOptions((o: any) => ({
+                            ...o,
+                            purge_data: false,
+                            purge_env: true,
+                            detach_clients: false,
+                            detach_managed_servers: true,
+                            detach_suite_tools: false,
+                            remove_path_block: false,
+                            remove_wrappers: false,
+                          }))
+                        }
+                      >
+                        Env reset (default)
+                      </button>
+                      <button
+                        className="nav-item"
+                        style={{ borderColor: 'rgba(239,68,68,0.6)', color: '#ef4444' }}
+                        onClick={() =>
+                          setPurgeOptions({
+                            purge_data: true,
+                            purge_env: true,
+                            kill_venv: true,
+                            detach_clients: true,
+                            detach_managed_servers: true,
+                            detach_suite_tools: true,
+                            remove_path_block: true,
+                            remove_wrappers: true,
+                          } as any)
+                        }
+                      >
+                        Full wipe
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1532,13 +1557,30 @@ const App: React.FC = () => {
                     <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                       <input
                         type="checkbox"
-                        checked={purgeOptions.purge_data}
-                        onChange={(e) => setPurgeOptions((o) => ({ ...o, purge_data: e.target.checked }))}
+                        checked={purgeOptions.purge_env}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, purge_env: e.target.checked }))}
                         style={{ marginTop: '2px' }}
                       />
                       <div>
                         <div style={{ fontSize: '12px' }}>
-                          <b>Wipe central Nexus data</b> <span style={{ opacity: 0.7 }}>(recommended for clean reinstall)</span>
+                          <b>Reset environments (keep suite installed)</b> <span style={{ opacity: 0.7 }}>(recommended)</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Removes rebuildable environments (e.g., <code>~/.mcp-tools/.venv</code> and per-server <code>servers/*/.venv</code>) but keeps suite binaries and data.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.purge_data}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, purge_data: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Wipe central Nexus data</b> <span style={{ opacity: 0.7 }}>(full uninstall / clean reinstall)</span>
                         </div>
                         <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
                           Deletes <code>~/.mcp-tools</code> (servers, binaries, GUI assets) and <code>~/.mcpinv</code> (state/logs).
@@ -1551,15 +1593,49 @@ const App: React.FC = () => {
                         type="checkbox"
                         disabled={!purgeOptions.purge_data}
                         checked={purgeOptions.kill_venv}
-                        onChange={(e) => setPurgeOptions((o) => ({ ...o, kill_venv: e.target.checked }))}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, kill_venv: e.target.checked }))}
                         style={{ marginTop: '2px' }}
                       />
                       <div>
                         <div style={{ fontSize: '12px' }}>
-                          <b>Delete environments</b> <span style={{ opacity: 0.7 }}>(slow to rebuild)</span>
+                          <b>Delete environments too</b> <span style={{ opacity: 0.7 }}>(slower reinstall)</span>
                         </div>
                         <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
-                          Removes <code>~/.mcp-tools/.venv</code> and any suite-managed runtime installs inside <code>~/.mcp-tools</code>.
+                          When wiping data, this also deletes the shared <code>~/.mcp-tools/.venv</code>.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.detach_managed_servers}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, detach_managed_servers: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Detach managed servers from IDE clients</b> <span style={{ opacity: 0.7 }}>(Claude/Codex/Xcode)</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Removes server entries that point into <code>~/.mcp-tools/servers/*</code> (best-effort, with backups). Keeps suite tools by default.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.detach_suite_tools}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, detach_suite_tools: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Detach suite tools from IDE clients</b> <span style={{ opacity: 0.7 }}>(optional)</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Removes <code>nexus-*</code> tool entries and commands pointing into <code>~/.mcp-tools/bin</code>. Use this only if you want IDEs fully clean.
                         </div>
                       </div>
                     </label>
@@ -1568,15 +1644,15 @@ const App: React.FC = () => {
                       <input
                         type="checkbox"
                         checked={purgeOptions.detach_clients}
-                        onChange={(e) => setPurgeOptions((o) => ({ ...o, detach_clients: e.target.checked }))}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, detach_clients: e.target.checked }))}
                         style={{ marginTop: '2px' }}
                       />
                       <div>
                         <div style={{ fontSize: '12px' }}>
-                          <b>Detach from IDE clients</b> <span style={{ opacity: 0.7 }}>(Claude/Codex/Xcode)</span>
+                          <b>Detach everything Nexus-related from IDE clients</b> <span style={{ opacity: 0.7 }}>(broad)</span>
                         </div>
                         <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
-                          Removes suite server entries from detected client config files (best-effort, with backups).
+                          Broad heuristic: removes entries pointing anywhere inside <code>~/.mcp-tools</code>. This is mainly for full wipe recovery.
                         </div>
                       </div>
                     </label>
@@ -1585,7 +1661,7 @@ const App: React.FC = () => {
                       <input
                         type="checkbox"
                         checked={purgeOptions.remove_path_block}
-                        onChange={(e) => setPurgeOptions((o) => ({ ...o, remove_path_block: e.target.checked }))}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, remove_path_block: e.target.checked }))}
                         style={{ marginTop: '2px' }}
                       />
                       <div>
@@ -1602,7 +1678,7 @@ const App: React.FC = () => {
                       <input
                         type="checkbox"
                         checked={purgeOptions.remove_wrappers}
-                        onChange={(e) => setPurgeOptions((o) => ({ ...o, remove_wrappers: e.target.checked }))}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, remove_wrappers: e.target.checked }))}
                         style={{ marginTop: '2px' }}
                       />
                       <div>
