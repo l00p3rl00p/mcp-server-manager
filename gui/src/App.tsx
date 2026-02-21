@@ -70,10 +70,19 @@ const App: React.FC = () => {
   const [scanRoots, setScanRoots] = useState<any[]>([]);
   const [watcherStatus, setWatcherStatus] = useState<string>("offline");
   const [healthIssues, setHealthIssues] = useState<any[]>([]);
+  const [selectedLogEntry, setSelectedLogEntry] = useState<LogEntry | null>(null);
   const [inventoryHistory, setInventoryHistory] = useState<any[]>([]);
   const [commandCatalog, setCommandCatalog] = useState<any[]>([]);
   const [catalogInputs, setCatalogInputs] = useState<any>({});
   const [quickIndexResource, setQuickIndexResource] = useState<string>('');
+  const [librarianLastIndexed, setLibrarianLastIndexed] = useState<{ resource: string; when: number } | null>(null);
+  const [serverDrawer, setServerDrawer] = useState<{ serverId: string; mode: 'log' | 'report' | 'inspect' } | null>(null);
+  const [serverDrawerData, setServerDrawerData] = useState<Record<string, any>>({});
+  const [logBrowserOpen, setLogBrowserOpen] = useState(false);
+  const [logBrowserMode, setLogBrowserMode] = useState<'audit' | 'lifecycle'>('audit');
+  const [logBrowserServerId, setLogBrowserServerId] = useState<string>('');
+  const [logBrowserPayload, setLogBrowserPayload] = useState<string>('');
+  const [coreDrawerKey, setCoreDrawerKey] = useState<string | null>(null);
   const [inventoryView, setInventoryView] = useState<'card' | 'list'>(() => {
     return (localStorage.getItem('nexus_inventory_view') as 'card' | 'list') || 'card';
   });
@@ -115,6 +124,25 @@ const App: React.FC = () => {
     remove_path_block: false,
     remove_wrappers: false,
   });
+
+  type SideConfirmState = {
+    title: string;
+    details?: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    danger?: boolean;
+    onConfirm?: () => void | Promise<void>;
+  };
+  const [sideConfirm, setSideConfirm] = useState<SideConfirmState | null>(null);
+
+  const openConfirmPanel = (next: SideConfirmState) => {
+    setSideConfirm({
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Confirm',
+      danger: false,
+      ...next,
+    });
+  };
 
   const splitCmd = (cmd: string): string[] => {
     const m = cmd.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
@@ -170,6 +198,70 @@ const App: React.FC = () => {
     }
   };
 
+  const openServerDrawer = async (serverId: string, mode: 'log' | 'report' | 'inspect', serverRaw?: any) => {
+    if (serverDrawer?.serverId === serverId && serverDrawer?.mode === mode) {
+      setServerDrawer(null);
+      return;
+    }
+    setServerDrawer({ serverId, mode });
+
+    const key = `${serverId}:${mode}`;
+    if (mode === 'inspect') {
+      setServerDrawerData(prev => ({ ...prev, [key]: serverRaw ?? prev[key] ?? null }));
+      return;
+    }
+    try {
+      if (mode === 'log') {
+        const res = await fetch(API_BASE + `/server/logs/${encodeURIComponent(serverId)}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'No logs found');
+        setServerDrawerData(prev => ({ ...prev, [key]: data }));
+        return;
+      }
+      if (mode === 'report') {
+        const res = await fetch(API_BASE + `/export/report.json?server=${encodeURIComponent(serverId)}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Report failed');
+        setServerDrawerData(prev => ({ ...prev, [key]: data }));
+        return;
+      }
+    } catch (e: any) {
+      addNotification(`Panel failed: ${e.message || String(e)}`, 'error');
+      setServerDrawerData(prev => ({ ...prev, [key]: { error: String(e?.message || e) } }));
+    }
+  };
+
+  const openLogBrowser = async (mode: 'audit' | 'lifecycle', serverId?: string) => {
+    setLogBrowserMode(mode);
+    const nextServerId = serverId ?? logBrowserServerId ?? '';
+    setLogBrowserServerId(nextServerId);
+    setLogBrowserOpen(true);
+    try {
+      if (mode === 'audit') {
+        const res = await fetch(API_BASE + `/export/report.json${nextServerId ? `?server=${encodeURIComponent(nextServerId)}` : ''}`);
+        const data = await res.json().catch(() => ({}));
+        setLogBrowserPayload(JSON.stringify(data, null, 2));
+        if (!res.ok) addNotification(data.error || 'Audit report failed.', 'error');
+        return;
+      }
+      if (mode === 'lifecycle') {
+        if (!nextServerId) {
+          setLogBrowserPayload('Select a server to view lifecycle logs.');
+          return;
+        }
+        const res = await fetch(API_BASE + `/server/logs/${encodeURIComponent(nextServerId)}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'No logs found');
+        const text = ((data?.lines || []) as string[]).join('\n');
+        setLogBrowserPayload(text || '(empty log)');
+        return;
+      }
+    } catch (e: any) {
+      setLogBrowserPayload(String(e?.message || e));
+      addNotification(String(e?.message || e), 'error');
+    }
+  };
+
   const fetchData = async () => {
     try {
       const endpoints: [string, (d: any) => void][] = [
@@ -205,6 +297,17 @@ const App: React.FC = () => {
     const interval = setInterval(fetchData, 3000);
     return () => clearInterval(interval);
   }, []);
+
+
+  // AUTO_REFRESH_LOG_BROWSER: when the Log Browser is open, poll the selected view.
+  useEffect(() => {
+    if (!logBrowserOpen) return;
+    openLogBrowser(logBrowserMode, logBrowserServerId);
+    const interval = setInterval(() => {
+      openLogBrowser(logBrowserMode, logBrowserServerId);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [logBrowserOpen, logBrowserMode, logBrowserServerId]);
 
   // Modal auto-close on tab change
   useEffect(() => {
@@ -263,6 +366,19 @@ const App: React.FC = () => {
     }).slice(-100).reverse();
   }, [logs, terminalFilter, terminalLevel]);
 
+  const fleetHealth = useMemo(() => {
+    const servers = (systemStatus?.servers || []) as any[];
+    const coreIds = new Set(['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager', 'nexus-librarian']);
+    const managed = servers.filter(s => s && !coreIds.has(String(s.id)));
+    const total = managed.length;
+    const online = managed.filter(s => s.status === 'online').length;
+    const stopped = managed.filter(s => s.status !== 'online').length;
+    const label = total === 0 ? 'No servers' : (stopped === 0 ? 'All online' : 'Mixed');
+    const detail = total === 0 ? '—' : `${online}/${total} online`;
+    const pulse = total === 0 ? 'yellow' : (stopped === 0 ? 'green' : 'yellow');
+    return { total, online, stopped, label, detail, pulse };
+  }, [systemStatus]);
+
   const handleRun = async (cmd: string, key: string) => {
     try {
       addNotification(`Executing: ${cmd.split(' ')[0]}...`, 'info');
@@ -311,6 +427,16 @@ const App: React.FC = () => {
     } catch (e) { setHelpContent(String(e)); }
   };
 
+  const coreBinForKey = (k: string): { bin: string; title: string; startCmd?: string } | null => {
+    const key = String(k || '').toLowerCase();
+    if (key === 'activator') return { bin: 'mcp-activator', title: 'Activator' };
+    if (key === 'observer') return { bin: 'mcp-observer', title: 'Observer' };
+    if (key === 'surgeon') return { bin: 'mcp-surgeon', title: 'Surgeon' };
+    if (key === 'librarian_bin') return { bin: 'mcp-librarian', title: 'Librarian (Binary)' };
+    if (key === 'librarian') return { bin: 'mcp-librarian', title: 'Librarian (Service)', startCmd: 'mcp-librarian --server' };
+    return null;
+  };
+
   return (
     <div className="app-container">
       <div className="liquid-bg"></div>
@@ -330,110 +456,606 @@ const App: React.FC = () => {
         ))}
       </div>
 
-      {selectedItem && (
-        <div className="inspector-overlay" onClick={() => setSelectedItem(null)} style={{ background: 'rgba(0,0,0,0.7)', zIndex: 2000 }}>
-          <div className="glass-card" onClick={e => e.stopPropagation()} style={{ width: '90%', maxWidth: '900px', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '20px', borderBottom: '1px solid var(--card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <ShieldCheck size={24} color="var(--primary)" />
-                <h3 style={{ margin: 0 }}>System Inspector</h3>
+      {/* Stacked side-panels (no screen dimming). */}
+      {(helpContent || logViewer || selectedItem || purgeModalOpen || sideConfirm || logBrowserOpen || selectedLogEntry) && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            right: 0,
+            height: '100vh',
+            display: 'flex',
+            flexDirection: 'row-reverse',
+            gap: '12px',
+            zIndex: 6000,
+            pointerEvents: 'none',
+          }}
+        >
+          {logBrowserOpen && (
+            <div
+              className="glass-card"
+              style={{
+                width: '520px',
+                height: 'calc(100vh - 24px)',
+                marginTop: '12px',
+                marginBottom: '12px',
+                borderLeft: '1px solid rgba(59,130,246,0.45)',
+                background: 'rgba(10, 10, 20, 0.95)',
+                display: 'flex',
+                flexDirection: 'column',
+                animation: 'slideInRight 0.3s ease-out',
+                borderRadius: '14px 0 0 14px',
+                pointerEvents: 'auto',
+              }}
+            >
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
+                    <Terminal size={16} /> Log Browser
+                  </h3>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '6px' }}>
+                    View raw logs and reports without leaving Nexus Commander.
+                  </div>
+                </div>
+                <button className="nav-item" style={{ padding: '6px 10px', fontSize: '11px' }} onClick={() => setLogBrowserOpen(false)}>Close</button>
               </div>
-              <button className="nav-item" onClick={() => setSelectedItem(null)} style={{ padding: '8px', borderRadius: '50%' }} aria-label="Close">
-                <X size={20} />
-              </button>
-            </div>
-            <pre style={{ padding: '24px', overflow: 'auto', background: 'rgba(0,0,0,0.4)', flex: 1, margin: 0, fontFamily: 'monospace', fontSize: '13px', color: '#10b981' }}>
-              {JSON.stringify(selectedItem, null, 2)}
-            </pre>
-          </div>
-        </div>
-      )}
 
-      {helpContent && (
-        <div className="inspector-overlay" onClick={() => setHelpContent(null)} style={{ background: 'rgba(0,0,0,0.5)', zIndex: 3000, justifyContent: 'flex-end', alignItems: 'flex-end' }}>
-          <div className="glass-card" onClick={e => e.stopPropagation()} style={{
-            width: '500px', height: '100vh',
-            borderLeft: '1px solid var(--primary)',
-            background: 'rgba(10, 10, 20, 0.95)',
-            display: 'flex', flexDirection: 'column',
-            animation: 'slideInRight 0.3s ease-out',
-            borderRadius: '0'
-          }}>
-            <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Info size={18} /> {helpTitle} Help
-              </h3>
-              <X size={20} style={{ cursor: 'pointer' }} onClick={() => setHelpContent(null)} />
-            </div>
-            <pre style={{
-              padding: '20px', overflow: 'auto', flex: 1,
-              fontFamily: 'monospace', fontSize: '11px',
-              color: '#e2e8f0', whiteSpace: 'pre-wrap'
-            }}>
-              {helpContent}
-            </pre>
-          </div>
-        </div>
-      )}
+              <div style={{ padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <select className="glass-card" style={{ padding: '8px 10px', fontSize: '12px', background: 'rgba(0,0,0,0.25)' }} value={logBrowserMode} onChange={e => openLogBrowser(e.target.value as any, logBrowserServerId)}>
+                  <option value="audit">Audit report (JSON)</option>
+                  <option value="lifecycle">Server lifecycle log</option>
+                </select>
+                <select className="glass-card" style={{ flex: 1, padding: '8px 10px', fontSize: '12px', background: 'rgba(0,0,0,0.25)' }} value={logBrowserServerId} onChange={e => openLogBrowser(logBrowserMode, e.target.value)}>
+                  <option value="">(system-wide)</option>
+                  {(systemStatus?.servers || []).map((s: any) => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.id})</option>
+                  ))}
+                </select>
+                <button className="nav-item" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => openLogBrowser(logBrowserMode, logBrowserServerId)}>
+                  Refresh
+                </button>
+              </div>
 
-      {logViewer && (
-        <div className="inspector-overlay" onClick={() => setLogViewer(null)} style={{ background: 'rgba(0,0,0,0.5)', zIndex: 3100, justifyContent: 'flex-end', alignItems: 'flex-end' }}>
-          <div className="glass-card" onClick={e => e.stopPropagation()} style={{
-            width: '720px', height: '100vh',
-            borderLeft: '1px solid var(--primary)',
-            background: 'rgba(10, 10, 20, 0.95)',
-            display: 'flex', flexDirection: 'column',
-            animation: 'slideInRight 0.3s ease-out',
-            borderRadius: '0'
-          }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
-                <Terminal size={16} /> Last Start Log: {logViewer.serverId}
-              </h3>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <button className="nav-item" style={{ padding: '6px 10px', fontSize: '11px' }} onClick={() => openLastStartLog(logViewer.serverId)} title="Refresh">Refresh</button>
-                <X size={20} style={{ cursor: 'pointer' }} onClick={() => setLogViewer(null)} />
+	              <pre style={{ flex: 1, margin: 0, padding: '16px 20px', overflow: 'auto', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11px', background: 'rgba(0,0,0,0.45)', color: '#e5e7eb', whiteSpace: 'pre-wrap' }}>
+	                {logBrowserPayload || '(no data)'}
+	              </pre>
+	            </div>
+	          )}
+
+	
+          {selectedLogEntry && (
+            <div
+              className="glass-card"
+              style={{
+                width: '460px',
+                height: 'calc(100vh - 24px)',
+                marginTop: '12px',
+                marginBottom: '12px',
+                borderLeft: '1px solid rgba(59,130,246,0.45)',
+                background: 'rgba(10, 10, 20, 0.95)',
+                display: 'flex',
+                flexDirection: 'column',
+                animation: 'slideInRight 0.3s ease-out',
+                borderRadius: '14px 0 0 14px',
+                pointerEvents: 'auto',
+              }}
+            >
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
+                    <Terminal size={16} /> Log Entry
+                  </h3>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '6px' }}>
+                    {new Date((selectedLogEntry.timestamp || 0) * 1000).toLocaleString()} • {selectedLogEntry.level}
+                  </div>
+                </div>
+                <button className="nav-item" style={{ padding: '6px 10px', fontSize: '11px' }} onClick={() => setSelectedLogEntry(null)}>Close</button>
+              </div>
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600 }}>{selectedLogEntry.message}</div>
+              </div>
+              <pre style={{ flex: 1, margin: 0, padding: '16px 20px', overflow: 'auto', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11px', background: 'rgba(0,0,0,0.45)', color: '#e5e7eb', whiteSpace: 'pre-wrap' }}>
+{JSON.stringify(selectedLogEntry, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {sideConfirm && (
+            <div
+              className="glass-card"
+              style={{
+                width: '520px',
+                height: 'calc(100vh - 24px)',
+                marginTop: '12px',
+                marginBottom: '12px',
+                borderLeft: `1px solid ${sideConfirm.danger ? 'rgba(239,68,68,0.55)' : 'rgba(59,130,246,0.45)'}`,
+                background: 'rgba(10, 10, 20, 0.95)',
+                display: 'flex',
+                flexDirection: 'column',
+                animation: 'slideInRight 0.3s ease-out',
+                borderRadius: '14px 0 0 14px',
+                pointerEvents: 'auto',
+              }}
+            >
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
+                  {sideConfirm.danger ? <AlertTriangle size={16} color="#ef4444" /> : <Info size={16} />} {sideConfirm.title}
+                </h3>
+                <button className="nav-item" style={{ padding: '6px 10px', fontSize: '11px' }} onClick={() => setSideConfirm(null)}>Close</button>
+              </div>
+              {sideConfirm.details && (
+                <pre style={{ margin: 0, padding: '16px 20px', overflow: 'auto', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11px', background: 'rgba(0,0,0,0.35)', color: '#e5e7eb', whiteSpace: 'pre-wrap', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                  {sideConfirm.details}
+                </pre>
+              )}
+              <div style={{ padding: '16px 20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button className="nav-item" onClick={() => setSideConfirm(null)}>{sideConfirm.cancelLabel || 'Cancel'}</button>
+                <button
+                  className="nav-item"
+                  style={sideConfirm.danger ? { borderColor: 'rgba(239,68,68,0.65)', color: '#ef4444' } : { borderColor: 'rgba(59,130,246,0.65)', color: '#3b82f6' }}
+                  onClick={async () => {
+                    const fn = sideConfirm.onConfirm;
+                    setSideConfirm(null);
+                    if (fn) await fn();
+                  }}
+                >
+                  {sideConfirm.confirmLabel || 'Confirm'}
+                </button>
               </div>
             </div>
-            <div style={{ padding: '10px 20px', fontSize: '11px', opacity: 0.7, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Path: <code>{logViewer.data?.log_path || '(unknown)'}</code></span>
-                <span>MTime: {logViewer.data?.mtime ? new Date(logViewer.data.mtime * 1000).toLocaleString() : '(unknown)'}</span>
+          )}
+
+          {purgeModalOpen && (
+            <div
+              className="glass-card"
+              style={{
+                width: 'min(760px, 96vw)',
+                height: 'calc(100vh - 24px)',
+                marginTop: '12px',
+                marginBottom: '12px',
+                borderLeft: '1px solid rgba(239, 68, 68, 0.45)',
+                background: 'rgba(10, 10, 18, 0.95)',
+                display: 'flex',
+                flexDirection: 'column',
+                animation: 'slideInRight 0.3s ease-out',
+                borderRadius: '14px 0 0 14px',
+                pointerEvents: 'auto',
+                overflow: 'auto',
+              }}
+            >
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                <div>
+                  <h3 style={{ margin: 0, color: '#ef4444' }}>Factory Reset</h3>
+                  <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--text-dim)' }}>Guided uninstall. Choose what to remove, then confirm.</p>
+                </div>
+                <button className="nav-item" onClick={() => setPurgeModalOpen(false)} style={{ padding: '6px 10px' }}>Close</button>
+              </div>
+              <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
+                <div className="glass-card" style={{ padding: '12px', background: 'rgba(255,255,255,0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <b style={{ fontSize: '12px' }}>Preset</b>
+                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' }}>
+                        Defaults to env reset (keeps suite). Full wipe is for a clean reinstall.
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <button
+                        className="nav-item"
+                        onClick={() =>
+                          setPurgeOptions((o: any) => ({
+                            ...o,
+                            purge_data: false,
+                            purge_env: true,
+                            detach_clients: false,
+                            detach_managed_servers: true,
+                            detach_suite_tools: false,
+                            remove_path_block: false,
+                            remove_wrappers: false,
+                          }))
+                        }
+                      >
+                        Env reset (default)
+                      </button>
+                      <button
+                        className="nav-item"
+                        style={{ borderColor: 'rgba(239,68,68,0.6)', color: '#ef4444' }}
+                        onClick={() =>
+                          setPurgeOptions({
+                            purge_data: true,
+                            purge_env: true,
+                            kill_venv: true,
+                            detach_clients: true,
+                            detach_managed_servers: true,
+                            detach_suite_tools: true,
+                            remove_path_block: true,
+                            remove_wrappers: true,
+                          } as any)
+                        }
+                      >
+                        Full wipe
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="glass-card" style={{ padding: '14px', background: 'rgba(255,255,255,0.02)' }}>
+                  <b style={{ fontSize: '12px' }}>What to remove</b>
+                  <div style={{ marginTop: '10px', display: 'grid', gap: '10px' }}>
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.purge_env}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, purge_env: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Reset environments (keep suite installed)</b> <span style={{ opacity: 0.7 }}>(recommended)</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Deletes per-server venvs and runtime state but keeps Nexus Commander + suite tools installed.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.purge_data}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, purge_data: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Wipe central Nexus data</b> <span style={{ opacity: 0.7 }}>(full uninstall / clean reinstall)</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Removes state under <code>~/.mcp-tools</code> including manifests, inventory and logs.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.detach_managed_servers}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, detach_managed_servers: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Detach managed servers</b> <span style={{ opacity: 0.7 }}>(safe)</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Removes server entries that were created/managed under <code>~/.mcp-tools/servers</code>.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.detach_suite_tools}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, detach_suite_tools: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Detach suite tools from IDE clients</b> <span style={{ opacity: 0.7 }}>(optional)</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Removes <code>nexus-*</code> tool entries and commands pointing into <code>~/.mcp-tools/bin</code>. Use this only if you want IDEs fully clean.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.detach_clients}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, detach_clients: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Detach everything Nexus-related from IDE clients</b> <span style={{ opacity: 0.7 }}>(broad)</span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Broad heuristic: removes entries pointing anywhere inside <code>~/.mcp-tools</code>. This is mainly for full wipe recovery.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.remove_path_block}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, remove_path_block: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Remove PATH block</b>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Removes the Nexus-managed shell snippet from <code>~/.zshrc</code> / <code>~/.bashrc</code> that adds <code>~/.mcp-tools/bin</code> to your PATH.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input
+                        type="checkbox"
+                        checked={purgeOptions.remove_wrappers}
+                        onChange={(e) => setPurgeOptions((o: any) => ({ ...o, remove_wrappers: e.target.checked }))}
+                        style={{ marginTop: '2px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px' }}>
+                          <b>Remove PATH wrappers</b>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                          Wrapper scripts are tiny launchers in <code>~/.local/bin</code> (e.g., <code>mcp-surgeon</code>) that forward to the real suite binaries. They let commands work “from anywhere”.
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="glass-card" style={{ padding: '14px', background: 'rgba(255,255,255,0.02)' }}>
+                  <b style={{ fontSize: '12px' }}>Confirm</b>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '6px' }}>
+                    Type <code>PURGE</code> to enable the reset button.
+                  </div>
+                  <input
+                    value={purgeConfirmText}
+                    onChange={(e) => setPurgeConfirmText(e.target.value)}
+                    placeholder="Type PURGE"
+                    style={{
+                      marginTop: '10px',
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      background: 'rgba(0,0,0,0.25)',
+                      color: 'var(--text)',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+
+                <div className="glass-card" style={{ padding: '14px', background: 'rgba(255,255,255,0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                    <div>
+                      <b style={{ fontSize: '12px' }}>Preview plan (recommended)</b>
+                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' }}>
+                        Runs a dry-run: shows exactly what would be removed, without deleting anything.
+                      </div>
+                    </div>
+                    <button
+                      className="nav-item"
+                      disabled={purgePreviewLoading}
+                      onClick={async () => {
+                        try {
+                          setPurgePreview(null);
+                          setPurgePreviewLoading(true);
+                          const res = await fetch(API_BASE + '/system/uninstall', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ...purgeOptions, dry_run: true }),
+                          });
+                          const d = await res.json().catch(() => ({}));
+                          const ok = !!d?.success;
+                          const raw = (() => {
+                            try { return JSON.stringify(d, null, 2); } catch { return String(d); }
+                          })();
+                          setPurgePreview({ ok, stdout: String(d?.stdout || ''), stderr: String(d?.stderr || d?.error || ''), raw });
+                          addNotification(ok ? "Preview generated." : "Preview failed.", ok ? "success" : "error");
+                        } catch (e) {
+                          setPurgePreview({ ok: false, stdout: "", stderr: String(e), raw: String(e) });
+                          addNotification(String(e), "error");
+                        } finally {
+                          setPurgePreviewLoading(false);
+                        }
+                      }}
+                      style={{ padding: '8px 12px' }}
+                    >
+                      {purgePreviewLoading ? "Generating…" : "Preview"}
+                    </button>
+                  </div>
+
+                  {purgePreview && (
+                    <div style={{ marginTop: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span className={`badge ${purgePreview?.ok ? 'badge-success' : 'badge-danger'}`}>
+                          {purgePreview?.ok ? 'dry-run ok' : 'dry-run failed'}
+                        </span>
+                        <button
+                          className="nav-item"
+                          onClick={() => {
+                            const text = [purgePreview?.raw || "", purgePreview?.stdout || "", purgePreview?.stderr || ""].filter(Boolean).join("\n");
+                            navigator.clipboard?.writeText(text);
+                            addNotification("Copied preview output.", "success");
+                          }}
+                          style={{ padding: '6px 10px' }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <pre style={{ marginTop: '10px', maxHeight: '220px', overflow: 'auto', padding: '12px', borderRadius: '10px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.08)', fontSize: '11px', whiteSpace: 'pre-wrap' }}>
+                        {(purgePreview?.stdout || "").trim() || "(no stdout)"}
+                        {purgePreview?.stderr ? `\n\n[stderr]\n${purgePreview?.stderr?.trim()}` : ""}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+                  <button className="nav-item" onClick={() => setPurgeModalOpen(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    className="nav-item"
+                    disabled={purgeConfirmText.trim().toUpperCase() !== "PURGE"}
+                    style={{
+                      borderColor: '#ef4444',
+                      color: '#ef4444',
+                      opacity: purgeConfirmText.trim().toUpperCase() !== "PURGE" ? 0.55 : 1,
+                      cursor: purgeConfirmText.trim().toUpperCase() !== "PURGE" ? 'not-allowed' : 'pointer',
+                    }}
+                    onClick={async () => {
+                      try {
+                        addNotification("Factory reset started...", "error");
+                        const res = await fetch(API_BASE + '/system/uninstall', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(purgeOptions),
+                        });
+                        const d = await res.json().catch(() => ({}));
+                        if (!res.ok || !d?.success) {
+                          addNotification(d?.error || d?.stderr || "Factory reset failed", "error");
+                          return;
+                        }
+                        addNotification("Factory reset complete. Reloading...", "success");
+                        setPurgeModalOpen(false);
+                        setTimeout(() => window.location.reload(), 750);
+                      } catch (e) {
+                        addNotification(String(e), "error");
+                      }
+                    }}
+                  >
+                    Confirm reset
+                  </button>
+                </div>
               </div>
             </div>
-            <pre style={{
-              padding: '16px 20px', overflow: 'auto', flex: 1,
-              fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11px',
-              color: '#e2e8f0', whiteSpace: 'pre-wrap', margin: 0
-            }}>
-              {(logViewer.data?.lines || []).join('\n')}
-            </pre>
-          </div>
+          )}
+
+          {selectedItem && (
+            <div
+              className="glass-card"
+              style={{
+                width: '720px',
+                height: '100vh',
+                borderLeft: '1px solid rgba(16,185,129,0.45)',
+                background: 'rgba(10, 10, 18, 0.95)',
+                display: 'flex',
+                flexDirection: 'column',
+                animation: 'slideInRight 0.3s ease-out',
+                borderRadius: '0',
+                pointerEvents: 'auto',
+              }}
+            >
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
+                  <ShieldCheck size={16} color="#10b981" /> System Inspector
+                </h3>
+                <button className="nav-item" onClick={() => setSelectedItem(null)} style={{ padding: '6px 10px' }} aria-label="Close">
+                  <X size={16} />
+                </button>
+              </div>
+              <pre style={{ padding: '16px 20px', overflow: 'auto', flex: 1, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11px', color: '#e2e8f0', whiteSpace: 'pre-wrap', margin: 0 }}>
+                {JSON.stringify(selectedItem, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {logViewer && (
+            <div
+              className="glass-card"
+              style={{
+                width: '720px',
+                height: '100vh',
+                borderLeft: '1px solid var(--primary)',
+                background: 'rgba(10, 10, 20, 0.95)',
+                display: 'flex',
+                flexDirection: 'column',
+                animation: 'slideInRight 0.3s ease-out',
+                borderRadius: '0',
+                pointerEvents: 'auto',
+              }}
+            >
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
+                  <Terminal size={16} /> Last Start Log: {logViewer.serverId}
+                </h3>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <button className="nav-item" style={{ padding: '6px 10px', fontSize: '11px' }} onClick={() => openLastStartLog(logViewer.serverId)} title="Refresh">Refresh</button>
+                  <button className="nav-item" onClick={() => setLogViewer(null)} style={{ padding: '6px 10px' }} aria-label="Close">
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+              <div style={{ padding: '10px 20px', fontSize: '11px', opacity: 0.7, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Path: <code>{logViewer.data?.log_path || '(unknown)'}</code></span>
+                  <span>MTime: {logViewer.data?.mtime ? new Date(logViewer.data.mtime * 1000).toLocaleString() : '(unknown)'}</span>
+                </div>
+              </div>
+              <pre style={{
+                padding: '16px 20px', overflow: 'auto', flex: 1,
+                fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11px',
+                color: '#e2e8f0', whiteSpace: 'pre-wrap', margin: 0
+              }}>
+                {(logViewer.data?.lines || []).join('\n')}
+              </pre>
+            </div>
+          )}
+
+          {helpContent && (
+            <div
+              className="glass-card"
+              style={{
+                width: '500px',
+                height: '100vh',
+                borderLeft: '1px solid var(--primary)',
+                background: 'rgba(10, 10, 20, 0.95)',
+                display: 'flex',
+                flexDirection: 'column',
+                animation: 'slideInRight 0.3s ease-out',
+                borderRadius: '0',
+                pointerEvents: 'auto',
+              }}
+            >
+              <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Info size={18} /> {helpTitle} Help
+                </h3>
+                <button className="nav-item" onClick={() => setHelpContent(null)} style={{ padding: '6px 10px' }} aria-label="Close">
+                  <X size={16} />
+                </button>
+              </div>
+              <pre style={{
+                padding: '20px', overflow: 'auto', flex: 1,
+                fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11px',
+                color: '#e2e8f0', whiteSpace: 'pre-wrap'
+              }}>
+                {helpContent}
+              </pre>
+            </div>
+          )}
         </div>
       )}
 
       <aside className="sidebar">
-        <div className="brand" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('dashboard')}><ShieldCheck size={32} /> <span>Nexus</span></div>
+        <div className="brand" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('dashboard')}><ShieldCheck size={32} /> <span>Nexus Commander</span></div>
         <nav className="nav-group">
-          <div className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}><LayoutDashboard size={20} /> Dashboard</div>
+          <div className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')} style={{ position: 'relative' }}><LayoutDashboard size={20} /> Dashboard{healthIssues.some(h => h.status === 'fatal' || h.status === 'error') && (<span className="pulse-dot pulse-red dash-health-dot" style={{ position: 'absolute', top: 12, right: 12, width: 6, height: 6 }}></span>)}</div>
           <div className={`nav-item ${activeTab === 'librarian' ? 'active' : ''}`} onClick={() => setActiveTab('librarian')}><Library size={20} /> Librarian</div>
           <div className={`nav-item ${activeTab === 'operations' ? 'active' : ''}`} onClick={() => setActiveTab('operations')} style={{ position: 'relative' }}>
             <Activity size={20} /> Operations
-            {healthIssues.some(h => h.status === 'fatal' || h.status === 'error') && (
-              <span className="pulse-dot pulse-red" style={{ position: 'absolute', top: 12, right: 12, width: 6, height: 6 }}></span>
-            )}
+            
           </div>
-          <div className={`nav-item ${activeTab === 'terminal' ? 'active' : ''}`} onClick={() => setActiveTab('terminal')}><Terminal size={20} /> Command Hub</div>
+          <div className={`nav-item ${activeTab === 'terminal' ? 'active' : ''}`} onClick={() => setActiveTab('terminal')}><Terminal size={20} /> Command Log</div>
           <div className={`nav-item ${activeTab === 'forge' ? 'active' : ''}`} onClick={() => setActiveTab('forge')}><Cpu size={20} /> Forge Engine</div>
-        </nav>
-        <div style={{ marginTop: 'auto' }} className="nav-group">
           <div className={`nav-item ${activeTab === 'lifecycle' ? 'active' : ''}`} onClick={() => setActiveTab('lifecycle')} style={{ position: 'relative' }}>
             <Settings size={20} /> Lifecycle
             {systemStatus?.updateAvailable && (
               <span className="pulse-dot pulse-blue" style={{ position: 'absolute', top: 12, right: 12, width: 6, height: 6 }}></span>
             )}
           </div>
-        </div>
+        </nav>
 
         <div style={{ marginTop: 'auto', padding: '0 16px', fontSize: '10px', color: 'var(--text-dim)', opacity: 0.5, letterSpacing: '0.5px' }}>
           CORE v{systemStatus?.version || '0.0.0'}
@@ -447,13 +1069,15 @@ const App: React.FC = () => {
         <main className="main-viewport" style={{ flex: 1, overflow: 'hidden auto' }}>
           <header style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '32px', alignItems: 'center' }}>
             <div>
-              <h1 style={{ fontSize: '28px', background: 'linear-gradient(90deg, #fff, var(--text-dim))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Workforce Nexus</h1>
+              <h1 style={{ fontSize: '28px', background: 'linear-gradient(90deg, #fff, var(--text-dim))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Nexus Commander</h1>
               <p style={{ color: 'var(--text-dim)', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                 {systemStatus?.posture || 'Disconnected'}
                 <span className={`pulse-dot pulse-${systemStatus?.pulse || 'red'}`}></span>
               </p>
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                <div style={{ fontSize: '10px', letterSpacing: '0.5px', textTransform: 'uppercase', opacity: 0.6 }}>Active project</div>
               <select className="glass-card" style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', cursor: 'pointer' }} value={systemStatus?.active_project?.id} onChange={e => {
                 const p = projects.find(x => x.id === e.target.value);
                 if (p) {
@@ -465,6 +1089,7 @@ const App: React.FC = () => {
               }}>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
+              </div>
             </div>
           </header>
 
@@ -513,8 +1138,8 @@ const App: React.FC = () => {
                 </div>
                 <div className="glass-card metrics-card" style={{ position: 'relative', cursor: 'pointer' }} onClick={() => openMetricPanel('health')}>
                   <Globe size={24} color="#3b82f6" />
-                  <span style={{ fontSize: '26px', fontWeight: 700, margin: '12px 0 4px', display: 'block' }}>{systemStatus?.pulse === 'green' ? 'Stable' : 'Unstable'}</span>
-                  <p style={{ color: 'var(--text-dim)', fontSize: '12px', margin: 0 }}>Fleet Health</p>
+                  <span style={{ fontSize: '26px', fontWeight: 700, margin: '12px 0 4px', display: 'block' }}>{fleetHealth.label}</span>
+                  <p style={{ color: 'var(--text-dim)', fontSize: '12px', margin: 0 }}>Fleet Health · {fleetHealth.detail}</p>
                 </div>
               </div>
 
@@ -525,7 +1150,13 @@ const App: React.FC = () => {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
                   {Object.entries(systemStatus?.core_components || {}).map(([k, v]) => (
-                    <div key={k} className="glass-card" style={{ padding: '12px', background: 'rgba(255,255,255,0.03)' }}>
+                    <div
+                      key={k}
+                      className="glass-card"
+                      style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', cursor: 'pointer', border: coreDrawerKey === k ? '1px solid rgba(59,130,246,0.45)' : undefined }}
+                      onClick={() => setCoreDrawerKey(prev => (prev === k ? null : k))}
+                      title="Click for health actions"
+                    >
                       <div style={{ fontSize: '11px', letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{k.replace(/_/g, ' ')}</div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
                         <span style={{ fontWeight: 600 }}>{String(v)}</span>
@@ -534,6 +1165,46 @@ const App: React.FC = () => {
                     </div>
                   ))}
                 </div>
+
+                {coreDrawerKey && (
+                  <div className="glass-card" style={{ marginTop: '12px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(59,130,246,0.45)', animation: 'slideIn 0.2s ease-out' }}>
+                    <div style={{ padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                          {coreDrawerKey.replace(/_/g, ' ')}
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' }}>
+                          Human workflow: verify status → view last-known evidence → attempt recovery.
+                        </div>
+                      </div>
+                      <button className="nav-item" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => setCoreDrawerKey(null)}>Close</button>
+                    </div>
+                    <div style={{ padding: '0 14px 12px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <button className="nav-item" style={{ padding: '6px 10px', fontSize: '11px' }} onClick={() => { setActiveTab('terminal'); setTerminalFilter(coreDrawerKey); }}>
+                        View timeline (filtered)
+                      </button>
+                      <button className="nav-item" style={{ padding: '6px 10px', fontSize: '11px' }} onClick={() => openLogBrowser('audit')}>
+                        Open raw audit (JSON)
+                      </button>
+                      {(() => {
+                        const meta = coreBinForKey(coreDrawerKey);
+                        if (!meta) return null;
+                        return (
+                          <>
+                            <button className="nav-item" style={{ padding: '6px 10px', fontSize: '11px' }} onClick={() => fetchHelp(meta.bin, meta.title)}>
+                              Show help
+                            </button>
+                            {meta.startCmd && String((systemStatus?.core_components || {})[coreDrawerKey]) !== 'online' && (
+                              <button className="nav-item badge-success" style={{ padding: '6px 10px', fontSize: '11px' }} onClick={() => handleRun(meta.startCmd || '', `core-${coreDrawerKey}-start`)}>
+                                Attempt start
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
               </section>
 
               <section className="glass-card">
@@ -560,10 +1231,59 @@ const App: React.FC = () => {
                       return (
                         <div key={s.id} className="glass-card metrics-card" style={{ padding: '20px', borderLeft: `4px solid ${s.status === 'online' ? '#10b981' : '#ef4444'}` }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                            <div style={{ wordBreak: 'break-all' }}>
-                              <b style={{ fontSize: '16px' }}>{s.name}</b>
+                            <div style={{ wordBreak: 'break-all', display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0 }}>
+                              <div style={{ minWidth: 0 }}>
+                                <b style={{ fontSize: '16px' }}>{s.name}</b>
                               <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '4px' }}>TYPE: {(s.type || 'server').toUpperCase()}</div>
                               <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '2px', opacity: 0.7 }}>{s.raw?.path || s.id}</div>
+                            </div>
+                              {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager'].includes(s.id) && (
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '2px', flexShrink: 0 }}>
+                                  <button
+                                    className={`nav-item ${isInjecting ? 'active' : 'badge-command'}`}
+                                    style={{ padding: '6px 10px', fontSize: '11px', display: 'flex', gap: '6px', alignItems: 'center' }}
+                                    onClick={() => {
+                                      if (isInjecting) {
+                                        setInjectTarget(null);
+                                      } else {
+                                        setInjectTarget(s);
+                                        setInjectionStatus(null);
+                                        fetch(API_BASE + '/injector/clients').then(r => r.json()).then(d => {
+                                          setAvailableClients(d.clients || []);
+                                          if (d.clients && d.clients.length > 0) setTargetClient(d.clients[0]);
+                                        });
+                                        fetch(API_BASE + '/injector/status', {
+                                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ server_id: s.id, name: s.name })
+                                        }).then(r => r.json()).then(d => setInjectionStatus(d));
+                                      }
+                                    }}
+                                    title="Inject to IDE"
+                                  >
+                                    <Activity size={12} /> {isInjecting ? 'Close' : 'Inject'}
+                                  </button>
+                                  <button
+                                    className="nav-item"
+                                    style={{ padding: '6px 10px', fontSize: '11px', color: 'var(--danger)' }}
+                                    onClick={() => {
+                                      openConfirmPanel({
+                                        title: `Remove "${s.name}" from inventory?`,
+                                        danger: true,
+                                        confirmLabel: 'Remove',
+                                        details: `Server ID: ${s.id}`,
+                                        onConfirm: async () => {
+                                          const res = await fetch(API_BASE + '/server/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) });
+                                          if (res.ok) { addNotification(`Removed ${s.name}.`, 'success'); fetchData(); }
+                                          else { const d = await res.json(); addNotification(d.error || 'Failed.', 'error'); }
+                                        }
+                                      });
+                                    }}
+                                    title="Remove from inventory"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              )}
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
                               <span className={`badge ${s.status === 'online' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10px' }}>{s.status}</span>
@@ -590,64 +1310,69 @@ const App: React.FC = () => {
                                 : (s.status === 'online' ? 'Stop' : 'Start')}
                             </button>
 
-                            {/* Last Start Log */}
-                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => openLastStartLog(s.id)} title="View last start log">
+                            {/* Lifecycle Log */}
+                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => openServerDrawer(s.id, 'log')} title="View lifecycle log">
                               <Terminal size={18} />
                             </button>
 
-                            {/* HTML Report */}
+                            {/* Audit Report */}
                             <button
                               className="nav-item"
                               style={{ padding: '8px' }}
-                              onClick={() => window.open(API_BASE + `/export/report?server=${encodeURIComponent(s.id)}`, '_blank')}
-                              title="Open HTML report"
+                              onClick={() => openServerDrawer(s.id, 'report')}
+                              title="Open audit report"
                             >
                               <FileText size={18} />
                             </button>
 
-                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => setSelectedItem(s.raw)} title="Inspect">
+                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => openServerDrawer(s.id, 'inspect', s.raw)} title="Inspect">
                               <Search size={18} />
                             </button>
 
-                            {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager', 'nexus-librarian'].includes(s.id) ? (
-                              <>
-                                <button className="nav-item" style={{ padding: '8px', color: 'var(--danger)' }} onClick={async () => {
-                                  if (confirm(`Remove '${s.name}' from inventory?`)) {
-                                    const res = await fetch(API_BASE + '/server/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) });
-                                    if (res.ok) { addNotification(`Removed ${s.name}.`, 'success'); fetchData(); }
-                                    else { const d = await res.json(); addNotification(d.error || 'Failed.', 'error'); }
-                                  }
-                                }} title="Remove">
-                                  <Trash2 size={18} />
+                              {['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager'].includes(s.id) ? (
+                                <button className="nav-item" style={{ padding: '8px', opacity: 0.3, cursor: 'not-allowed' }} title="Core — Lifecycle only">
+                                  <ShieldCheck size={18} />
                                 </button>
-
-                                <button className={`nav-item ${isInjecting ? 'active' : 'badge-command'}`} style={{ padding: '6px 12px', fontSize: '11px', display: 'flex', gap: '6px', alignItems: 'center' }} onClick={() => {
-                                  if (isInjecting) {
-                                    setInjectTarget(null); // Close drawer
-                                  } else {
-                                    setInjectTarget(s);
-                                    setInjectionStatus(null);
-                                    // Fetch clients
-                                    fetch(API_BASE + '/injector/clients').then(r => r.json()).then(d => {
-                                      setAvailableClients(d.clients || []);
-                                      if (d.clients && d.clients.length > 0) setTargetClient(d.clients[0]);
-                                    });
-                                    // Fetch status
-                                    fetch(API_BASE + '/injector/status', {
-                                      method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ server_id: s.id, name: s.name })
-                                    }).then(r => r.json()).then(d => setInjectionStatus(d));
-                                  }
-                                }} title="Inject to IDE">
-                                  <Activity size={12} /> {isInjecting ? 'Close' : 'Inject'}
-                                </button>
-                              </>
-                            ) : (
-                              <button className="nav-item" style={{ padding: '8px', opacity: 0.3, cursor: 'not-allowed' }} title="Core — Lifecycle only">
-                                <ShieldCheck size={18} />
-                              </button>
-                            )}
+                              ) : null}
                           </div>
+
+                          {/* Inline drawers (Accordion) */}
+                          {serverDrawer?.serverId === s.id && serverDrawer?.mode !== 'inspect' && (
+                            <div className="glass-card" style={{ marginTop: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(59,130,246,0.45)', animation: 'slideIn 0.2s ease-out' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(59,130,246,0.9)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span>
+                                  {serverDrawer?.mode === 'log' ? 'Lifecycle Log' : 'Audit Report'}
+                                </span>
+                                <button className="nav-item" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => setServerDrawer(null)}>Close</button>
+                              </div>
+                              <pre style={{ margin: 0, padding: '12px', borderRadius: '10px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.08)', fontSize: '11px', whiteSpace: 'pre-wrap', maxHeight: '260px', overflow: 'auto', fontFamily: 'ui-monospace, Menlo, monospace', color: '#e2e8f0' }}>
+                                {(() => {
+                                  const key = `${s.id}:${serverDrawer?.mode || 'log'}`;
+                                  const d = serverDrawerData[key];
+                                  if (!d) return 'Loading...';
+                                  if (d?.error) return String(d.error);
+                                  if (serverDrawer?.mode === 'log') return ((d?.lines || []) as string[]).join('\n') || '(empty log)';
+                                  return JSON.stringify(d, null, 2);
+                                })()}
+                              </pre>
+                            </div>
+                          )}
+
+                          {serverDrawer?.serverId === s.id && serverDrawer?.mode === 'inspect' && (
+                            <div className="glass-card" style={{ marginTop: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(16,185,129,0.45)', animation: 'slideIn 0.2s ease-out' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(16,185,129,0.9)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span>Inspector</span>
+                                <button className="nav-item" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => setServerDrawer(null)}>Close</button>
+                              </div>
+                              <pre style={{ margin: 0, padding: '12px', borderRadius: '10px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.08)', fontSize: '11px', whiteSpace: 'pre-wrap', maxHeight: '260px', overflow: 'auto', fontFamily: 'ui-monospace, Menlo, monospace', color: '#e2e8f0' }}>
+                                {(() => {
+                                  const key = `${s.id}:inspect`;
+                                  const d = serverDrawerData[key] ?? s.raw;
+                                  return JSON.stringify(d, null, 2);
+                                })()}
+                              </pre>
+                            </div>
+                          )}
 
                           {/* Inline Injection Drawer (Accordion) */}
                           {isInjecting && (
@@ -712,13 +1437,40 @@ const App: React.FC = () => {
                 {inventoryView === 'list' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
                     {(systemStatus?.servers || []).map((s: any, idx: number) => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)', borderLeft: `3px solid ${s.status === 'online' ? '#10b981' : '#ef4444'}`, transition: 'background 0.2s' }} className="table-row">
-                        <div style={{ flex: 2, minWidth: 0 }}>
-                          <b style={{ fontSize: '14px', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</b>
-                          <small style={{ opacity: 0.45, fontSize: '11px' }}>{s.raw?.path || s.id}</small>
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)', borderLeft: `3px solid ${s.status === 'online' ? '#10b981' : '#ef4444'}`, transition: 'background 0.2s' }} className="table-row">
+                        <div style={{ flex: 2, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                            {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager', 'nexus-librarian'].includes(s.id) ? (
+                              <button
+                                className="nav-item"
+                                style={{ padding: '3px 6px', color: 'var(--danger)' }}
+                                onClick={() => {
+                                  openConfirmPanel({
+                                    title: `Remove "${s.name}" from inventory?`,
+                                    danger: true,
+                                    confirmLabel: 'Remove',
+                                    details: `Server ID: ${s.id}`,
+                                    onConfirm: async () => {
+                                      const res = await fetch(API_BASE + '/server/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) });
+                                      if (res.ok) { addNotification(`Removed ${s.name}.`, 'success'); fetchData(); }
+                                      else { const d = await res.json().catch(() => ({})); addNotification(d.error || 'Failed.', 'error'); }
+                                    }
+                                  });
+                                }}
+                                title="Remove"
+                                aria-label="Remove"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            ) : (
+                              <span style={{ width: 28 }} />
+                            )}
+                            <b style={{ fontSize: '12px', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</b>
+                          </div>
+                          <small style={{ opacity: 0.45, fontSize: '9px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.raw?.path || s.id}</small>
                         </div>
                         <div style={{ flex: 1 }}>
-                          <span style={{ fontSize: '10px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{s.type || 'server'}</span>
+                          <span style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{s.type || 'server'}</span>
                         </div>
                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flex: 1 }}>
                           {s.metrics?.pid && <span className="badge badge-dim" style={{ fontSize: '9px' }}>PID {s.metrics.pid}</span>}
@@ -729,7 +1481,7 @@ const App: React.FC = () => {
                         <div style={{ display: 'flex', gap: '6px' }}>
                           <button
                             className={`nav-item ${s.status === 'online' ? 'badge-danger' : 'badge-primary'}`}
-                            style={{ padding: '4px 12px', fontSize: '11px', opacity: pendingServerAction[s.id] ? 0.6 : 1 }}
+                            style={{ padding: '4px 10px', fontSize: '11px', opacity: pendingServerAction[s.id] ? 0.6 : 1 }}
                             disabled={!!pendingServerAction[s.id]}
                             onClick={() => handleControl(s.id, s.status === 'online' ? 'stop' : 'start')}
                             title={pendingServerAction[s.id] ? `Working: ${pendingServerAction[s.id]}` : undefined}
@@ -738,17 +1490,11 @@ const App: React.FC = () => {
                               ? (pendingServerAction[s.id] === 'start' ? 'Starting…' : 'Stopping…')
                               : (s.status === 'online' ? 'Stop' : 'Start')}
                           </button>
-                          <button className="nav-item" style={{ padding: '4px 8px' }} onClick={() => openLastStartLog(s.id)} title="View last start log"><Terminal size={14} /></button>
-                          <button className="nav-item" style={{ padding: '4px 8px' }} onClick={() => window.open(API_BASE + `/export/report?server=${encodeURIComponent(s.id)}`, '_blank')} title="Open HTML report"><FileText size={14} /></button>
-                          <button className="nav-item" style={{ padding: '4px 8px' }} onClick={() => setSelectedItem(s.raw)} title="Inspect"><Search size={14} /></button>
-                          {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager', 'nexus-librarian'].includes(s.id) ? (
+                          <button className="nav-item" style={{ padding: '4px 6px' }} onClick={() => openServerDrawer(s.id, 'log')} title="View lifecycle log"><Terminal size={12} /></button>
+                          <button className="nav-item" style={{ padding: '4px 6px' }} onClick={() => openServerDrawer(s.id, 'report')} title="Open audit report"><FileText size={12} /></button>
+                          <button className="nav-item" style={{ padding: '4px 6px' }} onClick={() => openServerDrawer(s.id, 'inspect', s.raw)} title="Inspect"><Search size={12} /></button>
+                          {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager'].includes(s.id) ? (
                             <>
-                              <button className="nav-item" style={{ padding: '4px 8px', color: 'var(--danger)' }} onClick={async () => {
-                                if (confirm(`Remove '${s.name}'?`)) {
-                                  const res = await fetch(API_BASE + '/server/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) });
-                                  if (res.ok) { addNotification(`Removed ${s.name}.`, 'success'); fetchData(); }
-                                }
-                              }} title="Remove"><Trash2 size={14} /></button>
                               <button className="nav-item badge-command" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => {
                                 setInjectTarget(s);
                                 setInjectionStatus(null);
@@ -786,6 +1532,159 @@ const App: React.FC = () => {
                   <code>http://127.0.0.1:5001/mcp/sse</code>
                 </div>
               </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '16px' }}>
+                <section className="glass-card">
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><Search size={20} color="var(--primary)" /> Scan Roots</h3>
+                  <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: '8px 0 20px' }}>
+                    Register folders for indexing. This powers Librarian discovery without hard-coded paths.
+                  </p>
+                  <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+                    <input className="glass-card" style={{ flex: 1, padding: '12px 16px', background: 'rgba(0,0,0,0.3)' }} id="root-entry" placeholder="Absolute local path" />
+                    <button className="nav-item" style={{ padding: '0 16px' }} onClick={async () => {
+                      try {
+                        const res = await fetch(API_BASE + '/os/pick_folder', { method: 'POST' });
+                        const d = await res.json().catch(() => ({}));
+                        if (!res.ok || !d.success) return addNotification(d.error || "Picker failed.", "error");
+                        (document.getElementById('root-entry') as HTMLInputElement).value = d.path || '';
+                      } catch (e) { addNotification(String(e), 'error'); }
+                    }}>Browse…</button>
+                    <button className="nav-item badge-success" style={{ padding: '0 24px' }} onClick={async () => {
+                      const p = (document.getElementById('root-entry') as HTMLInputElement).value;
+                      if (!p) return addNotification("Path cannot be empty.", "error");
+                      const res = await fetch(API_BASE + '/librarian/roots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: p }) });
+                      if (res.ok) {
+                        addNotification("Scan root added successfully.", "success");
+                        (document.getElementById('root-entry') as HTMLInputElement).value = '';
+                        fetchData();
+                      } else {
+                        const d = await res.json().catch(() => ({}));
+                        addNotification(d.error || "Failed to add root.", "error");
+                      }
+                    }}>Add Root</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {scanRoots.map(r => (
+                      <div key={r.id} className="table-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
+                        <code>{r.path}</code>
+                        <X size={16} style={{ cursor: 'pointer', color: '#ef4444', opacity: 0.6 }} onClick={() => {
+                          openConfirmPanel({
+                            title: 'Remove scan root?',
+                            danger: true,
+                            confirmLabel: 'Remove',
+                            details: `Root ID: ${r.id}\nPath: ${r.path}`,
+                            onConfirm: async () => {
+                              await fetch(`${API_BASE}/librarian/roots?id=${r.id}`, { method: 'DELETE' });
+                              addNotification("Scan root removed.", "success");
+                              fetchData();
+                            }
+                          });
+                        }} />
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="glass-card">
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><Library size={20} color="var(--success)" /> Quick Index (File or URL)</h3>
+                  <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: '8px 0 20px' }}>
+                    Add a single file path or URL directly. Supports spaces and <code>~/</code> paths.
+                  </p>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <input
+                      className="glass-card"
+                      style={{ flex: 1, padding: '12px 16px', background: 'rgba(0,0,0,0.3)' }}
+                      value={quickIndexResource}
+                      onChange={e => setQuickIndexResource(e.target.value)}
+                      placeholder='e.g. "/Users/almowplay/developer/dropbox/ComplexEventProcessing Refined.pdf"'
+                    />
+                    <button className="nav-item" style={{ padding: '0 16px' }} onClick={async () => {
+                      try {
+                        const res = await fetch(API_BASE + '/os/pick_file', { method: 'POST' });
+                        const d = await res.json().catch(() => ({}));
+                        if (!res.ok || !d.success) return addNotification(d.error || "Picker failed.", "error");
+                        setQuickIndexResource(d.path || '');
+                      } catch (e) { addNotification(String(e), 'error'); }
+                    }}>Pick File…</button>
+                    <button className="nav-item badge-success" style={{ padding: '0 24px' }} onClick={async () => {
+                      const r = quickIndexResource.trim();
+                      if (!r) return addNotification("Resource cannot be empty.", "error");
+                      addNotification("Indexing resource...", "info");
+                      try {
+                        const res = await fetch(API_BASE + '/librarian/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resource: r }) });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || data.success === false) {
+                          addNotification(data.error || data.stderr || "Index failed.", "error");
+                          return;
+                        }
+                        addNotification("Indexed successfully.", "success");
+                        setLibrarianLastIndexed({ resource: r, when: Date.now() });
+                        setQuickIndexResource('');
+                        fetchData();
+                      } catch (e) {
+                        addNotification(String(e), "error");
+                      }
+                    }}>Index</button>
+                  </div>
+                </section>
+              </div>
+
+              {librarianLastIndexed && (
+                <section className="glass-card" style={{ marginTop: '16px', border: '1px solid rgba(59,130,246,0.35)', background: 'rgba(0,0,0,0.18)' }}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Activity size={18} color="var(--primary)" /> Next Steps
+                  </h3>
+                  <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: '8px 0 14px' }}>
+                    Indexed: <code>{librarianLastIndexed.resource}</code>
+                  </p>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button
+                      className="nav-item badge-command"
+                      style={{ padding: '10px 14px', fontSize: '12px' }}
+                      onClick={() => {
+                        // Treat Librarian as an injectable MCP server (even though it's a core component).
+                        const s = (systemStatus?.servers || []).find((x: any) => x?.id === 'nexus-librarian') || { id: 'nexus-librarian', name: 'Nexus Librarian' };
+                        setInjectTarget(s);
+                        setInjectionStatus(null);
+                        fetch(API_BASE + '/injector/clients').then(r => r.json()).then(d => {
+                          setAvailableClients(d.clients || []);
+                          if (d.clients && d.clients.length > 0) setTargetClient(d.clients[0]);
+                        });
+                        fetch(API_BASE + '/injector/status', {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ server_id: 'nexus-librarian', name: 'Nexus Librarian' })
+                        }).then(r => r.json()).then(d => setInjectionStatus(d));
+                        // Bring user to a surface where Inject drawer is visible.
+                        setActiveTab('dashboard');
+                      }}
+                      title="Inject Librarian into an IDE client so you can query the knowledge base from that client."
+                    >
+                      Inject Librarian into IDE
+                    </button>
+
+                    <button
+                      className="nav-item"
+                      style={{ padding: '10px 14px', fontSize: '12px' }}
+                      onClick={() => {
+                        openLogBrowser('audit', 'nexus-librarian');
+                      }}
+                      title="Open in-app raw diagnostics/report without leaving the GUI."
+                    >
+                      Open Log Browser
+                    </button>
+
+                    <button
+                      className="nav-item"
+                      style={{ padding: '10px 14px', fontSize: '12px' }}
+                      onClick={() => setLibrarianLastIndexed(null)}
+                      title="Dismiss this panel."
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </section>
+              )}
+
               <div className="glass-card" style={{ padding: 0 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
@@ -824,16 +1723,24 @@ const App: React.FC = () => {
                             )}
 
                             <button className="nav-item" style={{ border: 'none', color: '#ef4444', background: 'transparent', padding: '0 8px' }} onClick={() => {
-                              if (confirm(`Are you sure you want to delete "${l.title}" from the knowledge base?`)) {
-                                fetch(API_BASE + '/librarian/resource/delete', {
-                                  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: l.id })
-                                }).then(res => {
+                              openConfirmPanel({
+                                title: `Delete "${l.title}" from knowledge base?`,
+                                danger: true,
+                                confirmLabel: 'Delete',
+                                details: `Resource ID: ${l.id}\nURL: ${l.url}`,
+                                onConfirm: async () => {
+                                  const res = await fetch(API_BASE + '/librarian/resource/delete', {
+                                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: l.id })
+                                  });
                                   if (res.ok) {
                                     addNotification("Resource deleted.", "success");
                                     fetchData();
+                                  } else {
+                                    const d = await res.json().catch(() => ({}));
+                                    addNotification(d.error || 'Delete failed.', "error");
                                   }
-                                });
-                              }
+                                }
+                              });
                             }} aria-label="Delete resource">
                               <Trash2 size={18} />
                             </button>
@@ -844,7 +1751,7 @@ const App: React.FC = () => {
                     {links.length === 0 && (
                       <tr>
                         <td colSpan={3} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-dim)' }}>
-                          No resources indexed yet. Add scan roots in Lifecycle.
+                          No resources indexed yet. Add scan roots above.
                         </td>
                       </tr>
                     )}
@@ -875,8 +1782,8 @@ const App: React.FC = () => {
                   </select>
                 </div>
                 <button className="nav-item badge-success" style={{ fontWeight: 600 }} onClick={() => {
-                  addNotification("Opening standard health report...", "info");
-                  window.open(API_BASE + '/export/report', '_blank');
+                  addNotification("Opening audit report...", "info");
+                  openLogBrowser('audit');
                 }}>
                   <FileText size={18} /> Audit
                 </button>
@@ -885,7 +1792,7 @@ const App: React.FC = () => {
               <div className="glass-card" style={{ flex: 1, overflowY: 'auto', padding: 0, background: 'rgba(0,0,0,0.2)', fontSize: '13px', display: 'flex', flexDirection: 'column' }}>
                 {filteredLogs.map((log, i) => (
                   <div key={i} className="table-row" style={{ padding: '10px 20px' }}>
-                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center', cursor: 'pointer' }} onClick={() => setExpandedLog(expandedLog === i ? null : i)}>
+                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center', cursor: 'pointer' }} onClick={() => setSelectedLogEntry(log)}>
                       <span style={{ fontSize: '11px', opacity: 0.4, minWidth: '80px', fontFamily: 'monospace' }}>{new Date(log.timestamp * 1000).toLocaleTimeString()}</span>
                       <span className={`badge badge-${(log.level || 'info').toLowerCase()}`} style={{ minWidth: '85px', textAlign: 'center', fontSize: '10px', fontWeight: 700 }}>{log.level}</span>
                       <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -898,12 +1805,20 @@ const App: React.FC = () => {
                           <Copy size={12} />
                         </button>
                       </div>
-                      {log.metadata?.raw_result && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.6 }}>
-                          <small style={{ fontSize: '10px' }}>{expandedLog === i ? 'HIDE' : 'VIEW'} OUTPUT</small>
-                          {expandedLog === i ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </div>
-                      )}
+	                      {log.metadata?.raw_result && (
+	                        <button
+	                          className="nav-item"
+	                          style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.7, padding: '6px 8px', fontSize: '11px' }}
+	                          onClick={(e) => {
+	                            e.stopPropagation();
+	                            setExpandedLog(prev => (prev === i ? null : i));
+	                          }}
+	                          title="Toggle raw output"
+	                        >
+	                          <small style={{ fontSize: '10px' }}>{expandedLog === i ? 'HIDE' : 'VIEW'} OUTPUT</small>
+	                          {expandedLog === i ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+	                        </button>
+	                      )}
                     </div>
                     {expandedLog === i && log.metadata?.raw_result && (
                       <div style={{ marginTop: '12px', animation: 'slideIn 0.2s ease-out' }}>
@@ -1195,9 +2110,14 @@ const App: React.FC = () => {
                                 // Use mcp-surgeon which is whitelisted and points to the injector
                                 const cmd = `mcp-surgeon --client ${clientName} --add --name "${name}" --command python3 --args "${scriptPath}"`;
 
-                                if (confirm(`Inject "${name}" into ${clientName}?\n\nCommand: ${cmd}`)) {
-                                  handleRun(cmd, 'forge-inject');
-                                }
+                                openConfirmPanel({
+                                  title: `Inject "${name}" into ${clientName}?`,
+                                  confirmLabel: 'Inject',
+                                  details: `Command:\n${cmd}`,
+                                  onConfirm: async () => {
+                                    handleRun(cmd, 'forge-inject');
+                                  }
+                                });
                               }}>INJECT NOW</button>
                             </div>
                             <div className="glass-card" style={{ padding: '12px', background: 'rgba(0,0,0,0.2)', fontSize: '11px', fontFamily: 'monospace', marginTop: '8px' }}>
@@ -1231,86 +2151,47 @@ const App: React.FC = () => {
           {activeTab === 'lifecycle' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'slideIn 0.3s ease-out' }}>
               <section className="glass-card">
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><Search size={20} color="var(--primary)" /> Scan Integration</h3>
-                <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: '8px 0 20px' }}>Registered scan roots are indexed by the Nexus Librarian.</p>
-                <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-                  <input className="glass-card" style={{ flex: 1, padding: '12px 16px', background: 'rgba(0,0,0,0.3)' }} id="root-entry" placeholder="Absolute local path" />
-                  <button className="nav-item" style={{ padding: '0 16px' }} onClick={async () => {
-                    try {
-                      const res = await fetch(API_BASE + '/os/pick_folder', { method: 'POST' });
-                      const d = await res.json().catch(() => ({}));
-                      if (!res.ok || !d.success) return addNotification(d.error || "Picker failed.", "error");
-                      (document.getElementById('root-entry') as HTMLInputElement).value = d.path || '';
-                    } catch (e) { addNotification(String(e), 'error'); }
-                  }}>Browse…</button>
-                  <button className="nav-item badge-success" style={{ padding: '0 24px' }} onClick={async () => {
-                    const p = (document.getElementById('root-entry') as HTMLInputElement).value;
-                    if (!p) return addNotification("Path cannot be empty.", "error");
-                    const res = await fetch(API_BASE + '/librarian/roots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: p }) });
-                    if (res.ok) {
-                      addNotification("Scan root added successfully.", "success");
-                      (document.getElementById('root-entry') as HTMLInputElement).value = '';
-                      fetchData();
-                    }
-                  }}>Add Path</button>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {scanRoots.map(r => (
-                    <div key={r.id} className="table-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
-                      <code>{r.path}</code>
-                      <X size={16} style={{ cursor: 'pointer', color: '#ef4444', opacity: 0.6 }} onClick={() => {
-                        if (confirm("Remove this scan root?")) {
-                          fetch(`${API_BASE}/librarian/roots?id=${r.id}`, { method: 'DELETE' }).then(() => {
-                            addNotification("Scan root removed.", "success");
-                            fetchData();
-                          });
-                        }
-                      }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                  <div>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><Terminal size={20} color="#ef4444" /> Log Retention</h3>
+                    <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: '8px 0 0' }}>
+                      Prevents lifecycle logs from growing without bound (age + size cap).
+                    </p>
+                    <div style={{ marginTop: '10px', fontSize: '12px', opacity: 0.9 }}>
+                      {(systemStatus as any)?.log_stats ? (
+                        <>
+                          <span style={{ fontWeight: 700 }}>{Math.round((((systemStatus as any).log_stats.bytes || 0) / (1024 * 1024)) * 10) / 10} MB</span>
+                          <span style={{ opacity: 0.65 }}> • {(systemStatus as any).log_stats.files || 0} files</span>
+                          <span style={{ opacity: 0.65 }}> • retention {(systemStatus as any).log_stats.retention_days}d</span>
+                          <span style={{ opacity: 0.65 }}> • cap {(systemStatus as any).log_stats.max_mb}MB</span>
+                        </>
+                      ) : (
+                        <span style={{ opacity: 0.7 }}>(no stats)</span>
+                      )}
                     </div>
-                  ))}
+                  </div>
+                  <button className="nav-item" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={async () => {
+                    try {
+                      const res = await fetch(API_BASE + '/logs/prune', { method: 'POST' });
+                      const d = await res.json().catch(() => ({}));
+                      if (res.ok && d.success) {
+                        addNotification('Logs pruned.', 'success');
+                        fetchData();
+                      } else {
+                        addNotification(d.error || 'Log prune failed.', 'error');
+                      }
+                    } catch (e) {
+                      addNotification(String(e), 'error');
+                    }
+                  }}>Prune Now</button>
                 </div>
               </section>
 
               <section className="glass-card">
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><Library size={20} color="var(--success)" /> Quick Index (File or URL)</h3>
-                <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: '8px 0 20px' }}>
-                  Paste a local file path or URL. Supports spaces and <code>~/</code> paths.
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><Settings size={20} color="#3b82f6" /> Nexus Commander Lifecycle</h3>
+                <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: '8px 0 0' }}>
+                  Recovery, upgrades, snapshots, and reset. Indexing and scan roots live in Librarian.
                 </p>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <input
-                    className="glass-card"
-                    style={{ flex: 1, padding: '12px 16px', background: 'rgba(0,0,0,0.3)' }}
-                    value={quickIndexResource}
-                    onChange={e => setQuickIndexResource(e.target.value)}
-                    placeholder='e.g. "/Users/almowplay/developer/dropbox/ComplexEventProcessing Refined.pdf"'
-                  />
-                  <button className="nav-item" style={{ padding: '0 16px' }} onClick={async () => {
-                    try {
-                      const res = await fetch(API_BASE + '/os/pick_file', { method: 'POST' });
-                      const d = await res.json().catch(() => ({}));
-                      if (!res.ok || !d.success) return addNotification(d.error || "Picker failed.", "error");
-                      setQuickIndexResource(d.path || '');
-                    } catch (e) { addNotification(String(e), 'error'); }
-                  }}>Pick File…</button>
-                  <button className="nav-item badge-success" style={{ padding: '0 24px' }} onClick={async () => {
-                    const r = quickIndexResource.trim();
-                    if (!r) return addNotification("Resource cannot be empty.", "error");
-                    addNotification("Indexing resource...", "info");
-                    try {
-                      const res = await fetch(API_BASE + '/librarian/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resource: r }) });
-                      const data = await res.json().catch(() => ({}));
-                      if (!res.ok || data.success === false) {
-                        addNotification(data.error || data.stderr || "Index failed.", "error");
-                        return;
-                      }
-                      addNotification("Indexed successfully.", "success");
-                      setQuickIndexResource('');
-                      fetchData();
-                    } catch (e) {
-                      addNotification(String(e), "error");
-                    }
-                  }}>Index</button>
-                </div>
               </section>
 
               <section className="glass-card">
@@ -1342,16 +2223,24 @@ const App: React.FC = () => {
                         </div>
                       </div>
                       <button className="nav-item" style={{ border: '1px solid rgba(168, 85, 247, 0.4)', color: '#a855f7' }} onClick={() => {
-                        if (confirm("DANGER: Rollback will overwrite current configuration. Proceed?")) {
-                          fetch(API_BASE + '/project/rollback', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: h.name })
-                          }).then(res => {
+                        openConfirmPanel({
+                          title: 'Restore snapshot?',
+                          danger: true,
+                          confirmLabel: 'Restore',
+                          details: `Snapshot: ${h.name}\nThis will overwrite current configuration.`,
+                          onConfirm: async () => {
+                            const res = await fetch(API_BASE + '/project/rollback', {
+                              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: h.name })
+                            });
                             if (res.ok) {
                               addNotification("Rollback successful. System state restored.", "success");
                               fetchData();
+                            } else {
+                              const d = await res.json().catch(() => ({}));
+                              addNotification(d.error || 'Rollback failed.', "error");
                             }
-                          });
-                        }
+                          }
+                        });
                       }}>Restore</button>
                     </div>
                   ))}
@@ -1473,10 +2362,10 @@ const App: React.FC = () => {
           )}
         </main>
 
-        {purgeModalOpen && (
+        {false && purgeModalOpen && (
           <div
-            role="dialog"
-            aria-modal="true"
+            data-role="dialog"
+            data-aria-modal="true"
             onClick={() => setPurgeModalOpen(false)}
             style={{
               position: 'fixed',
@@ -1769,13 +2658,13 @@ const App: React.FC = () => {
                   {purgePreview && (
                     <div style={{ marginTop: '12px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span className={`badge ${purgePreview.ok ? 'badge-success' : 'badge-danger'}`}>
-                          {purgePreview.ok ? 'dry-run ok' : 'dry-run failed'}
+                        <span className={`badge ${purgePreview?.ok ? 'badge-success' : 'badge-danger'}`}>
+                          {purgePreview?.ok ? 'dry-run ok' : 'dry-run failed'}
                         </span>
                         <button
                           className="nav-item"
                           onClick={() => {
-                            const text = [purgePreview.raw || "", purgePreview.stdout, purgePreview.stderr].filter(Boolean).join("\n");
+                            const text = [purgePreview?.raw || "", purgePreview?.stdout || "", purgePreview?.stderr || ""].filter(Boolean).join("\n");
                             navigator.clipboard?.writeText(text);
                             addNotification("Copied preview output.", "success");
                           }}
@@ -1785,8 +2674,8 @@ const App: React.FC = () => {
                         </button>
                       </div>
                       <pre style={{ marginTop: '10px', maxHeight: '220px', overflow: 'auto', padding: '12px', borderRadius: '10px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.08)', fontSize: '11px', whiteSpace: 'pre-wrap' }}>
-                        {(purgePreview.stdout || "").trim() || "(no stdout)"}
-                        {purgePreview.stderr ? `\n\n[stderr]\n${purgePreview.stderr.trim()}` : ""}
+                        {(purgePreview?.stdout || "").trim() || "(no stdout)"}
+                        {purgePreview?.stderr ? `\n\n[stderr]\n${purgePreview?.stderr?.trim()}` : ""}
                       </pre>
                     </div>
                   )}

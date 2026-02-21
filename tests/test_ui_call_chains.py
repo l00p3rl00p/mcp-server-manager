@@ -243,6 +243,45 @@ class TestUiCallChains(unittest.TestCase):
         self.assertIn("--remove-path-block", argv)
         self.assertIn("--remove-wrappers", argv)
 
+    def test_export_report_json_systemwide_shape(self):
+        gb = self.gui_bridge
+
+        fake_status = {
+            "servers": [{"id": "a", "name": "A", "status": "online", "type": "generic", "metrics": {}, "raw": {}}],
+            "active_project": {"id": "nexus-default", "path": "/tmp"},
+            "core_components": {"librarian": "online"},
+            "posture": "Optimal",
+        }
+        fake_logs = [{"timestamp": 1, "iso": "t", "level": "INFO", "message": "x"}]
+
+        with patch.object(gb, "get_status", return_value=MagicMock(get_json=lambda: fake_status)), patch.object(
+            gb, "get_logs", return_value=MagicMock(get_json=lambda: fake_logs)
+        ):
+            res = self.client.get("/export/report.json")
+
+        self.assertEqual(res.status_code, 200)
+        payload = res.get_json()
+        self.assertIn("generated_at", payload)
+        self.assertEqual(payload.get("server_id"), None)
+        self.assertIsNone(payload.get("target"))
+        self.assertEqual(len(payload.get("servers") or []), 1)
+        self.assertEqual(payload.get("posture"), "Optimal")
+
+    def test_export_report_json_404_for_unknown_server(self):
+        gb = self.gui_bridge
+
+        fake_status = {"servers": [{"id": "known", "name": "K"}]}
+        fake_logs = []
+
+        with patch.object(gb, "get_status", return_value=MagicMock(get_json=lambda: fake_status)), patch.object(
+            gb, "get_logs", return_value=MagicMock(get_json=lambda: fake_logs)
+        ):
+            res = self.client.get("/export/report.json?server=missing")
+
+        self.assertEqual(res.status_code, 404)
+        payload = res.get_json()
+        self.assertIn("not found", (payload.get("error") or "").lower())
+
     def test_system_uninstall_dry_run_passes_flag(self):
         gb = self.gui_bridge
 
@@ -281,7 +320,7 @@ class TestUiCallChains(unittest.TestCase):
                 return False
             return False
 
-        with patch.object(gb.Path, "cwd", return_value=repo), patch.object(
+        with patch.dict(gb.os.environ, {"NEXUS_PROJECT_PATH": str(repo)}), patch.object(gb.Path, "cwd", return_value=repo), patch.object(
             gb.Path, "exists", new=_fake_exists
         ), patch.object(gb.subprocess, "Popen") as popen_mock:
             res = self.client.post("/system/update/python")
@@ -352,7 +391,7 @@ class TestUiCallChains(unittest.TestCase):
                 return False
             return False
 
-        with patch.object(gb.Path, "cwd", return_value=repo), patch.object(
+        with patch.dict(gb.os.environ, {"NEXUS_PROJECT_PATH": str(repo)}), patch.object(gb.Path, "cwd", return_value=repo), patch.object(
             gb.Path, "exists", new=_fake_exists
         ), patch.object(gb.subprocess, "Popen") as popen_mock:
             res = self.client.post("/system/update/python", json={"dry_run": True})

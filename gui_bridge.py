@@ -48,6 +48,26 @@ def os_pick_file():
     if os.environ.get("NEXUS_HEADLESS") == "1":
         return jsonify({"success": False, "error": "OS file picker not available in headless mode."}), 501
     try:
+        # macOS: prefer AppleScript chooser (more reliable than tkinter in tray/threaded contexts)
+        if sys.platform == "darwin":
+            script = 'POSIX path of (choose file with prompt "Pick a file to index")'
+            r = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if r.returncode != 0:
+                err = (r.stderr or "").strip()
+                # User canceled: osascript typically returns non-zero with a user-canceled message.
+                if "User canceled" in err or "User cancelled" in err:
+                    return jsonify({"success": False, "error": "Canceled"}), 400
+                return jsonify({"success": False, "error": err or "Picker failed"}), 500
+            path = (r.stdout or "").strip()
+            if not path:
+                return jsonify({"success": False, "error": "Canceled"}), 400
+            return jsonify({"success": True, "path": path})
+
         import tkinter as tk
         from tkinter import filedialog
 
@@ -68,7 +88,31 @@ def os_pick_file():
 def os_pick_folder():
     if os.environ.get("NEXUS_HEADLESS") == "1":
         return jsonify({"success": False, "error": "OS folder picker not available in headless mode."}), 501
+    # UAT/CI escape hatch: never pop a native dialog. Return a deterministic path.
+    # This keeps the call-chain testable without human interaction.
+    uat_path = os.environ.get("NEXUS_UAT_PICK_FOLDER")
+    if uat_path:
+        return jsonify({"success": True, "path": uat_path})
     try:
+        # macOS: prefer AppleScript chooser (more reliable than tkinter in tray/threaded contexts)
+        if sys.platform == "darwin":
+            script = 'POSIX path of (choose folder with prompt "Pick a folder to index")'
+            r = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if r.returncode != 0:
+                err = (r.stderr or "").strip()
+                if "User canceled" in err or "User cancelled" in err:
+                    return jsonify({"success": False, "error": "Canceled"}), 400
+                return jsonify({"success": False, "error": err or "Picker failed"}), 500
+            path = (r.stdout or "").strip()
+            if not path:
+                return jsonify({"success": False, "error": "Canceled"}), 400
+            return jsonify({"success": True, "path": path})
+
         import tkinter as tk
         from tkinter import filedialog
 
@@ -241,7 +285,7 @@ class ProjectManager:
 
     def get_projects(self):
         if not PROJECTS_FILE.exists():
-            projects = [{"id": "nexus-default", "name": "Workforce Nexus (Default)", "path": str(NEXUS_HOME / "mcp-server-manager")}]
+            projects = [{"id": "nexus-default", "name": "Nexus Commander (Default)", "path": str(NEXUS_HOME / "mcp-server-manager")}]
             with open(PROJECTS_FILE, 'w') as f: json.dump(projects, f)
         
         with open(PROJECTS_FILE, 'r') as f:
@@ -637,6 +681,77 @@ def get_logs():
         return jsonify(logs)
     except Exception as e: return jsonify({"error": str(e)}), 500
 
+
+
+def _log_policy() -> dict:
+    # Industry-default local retention: 30 days, 500MB cap.
+    try:
+        days = int(os.environ.get('NEXUS_LOG_RETENTION_DAYS', '30'))
+    except Exception:
+        days = 30
+    try:
+        max_mb = int(os.environ.get('NEXUS_LOG_MAX_MB', '500'))
+    except Exception:
+        max_mb = 500
+    return {"retention_days": max(1, days), "max_mb": max(50, max_mb)}
+
+
+def _log_dir_stats(log_dir: Path) -> dict:
+    total = 0
+    files = []
+    try:
+        for p in log_dir.glob('*.log'):
+            try:
+                st = p.stat()
+                total += int(st.st_size)
+                files.append({"path": str(p), "mtime": float(st.st_mtime), "size": int(st.st_size)})
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return {"dir": str(log_dir), "bytes": total, "files": len(files), "entries": files}
+
+
+def _prune_log_dir(log_dir: Path) -> dict:
+    policy = _log_policy()
+    stats = _log_dir_stats(log_dir)
+    entries = list(stats.get('entries') or [])
+
+    now = time.time()
+    max_age_s = float(policy['retention_days']) * 86400.0
+
+    removed = []
+    kept = []
+
+    # 1) Age-based deletion
+    for e in sorted(entries, key=lambda x: x.get('mtime', 0.0)):
+        try:
+            if (now - float(e.get('mtime', now))) > max_age_s:
+                Path(e['path']).unlink(missing_ok=True)
+                removed.append({"path": e['path'], "reason": "age"})
+            else:
+                kept.append(e)
+        except Exception:
+            kept.append(e)
+
+    # 2) Size-cap deletion (oldest first)
+    cap_bytes = int(policy['max_mb']) * 1024 * 1024
+    kept_sorted = sorted(kept, key=lambda x: x.get('mtime', 0.0))
+    cur = sum(int(x.get('size', 0)) for x in kept_sorted)
+    for e in list(kept_sorted):
+        if cur <= cap_bytes:
+            break
+        try:
+            Path(e['path']).unlink(missing_ok=True)
+            removed.append({"path": e['path'], "reason": "size_cap"})
+            cur -= int(e.get('size', 0))
+        except Exception:
+            continue
+
+    final = _log_dir_stats(log_dir)
+    final.pop('entries', None)
+    return {"policy": policy, "removed": removed, "final": final}
+
 @app.route('/status', methods=['GET'])
 def get_status():
     """
@@ -810,7 +925,8 @@ def get_status():
         "servers": servers,
         "resource_count": resource_count,
         "active_project": pm.active_project,
-        "version": __version__
+        "version": __version__,
+        "log_stats": {**_log_dir_stats(pm.app_data_dir / "server_logs"), **_log_policy()}
     })
 
 @app.route('/validate', methods=['GET'])
@@ -986,6 +1102,21 @@ def mcp_sse():
             yield f"data: {json.dumps({'type': 'ping'})}\n\n"
     return Response(event_stream(), mimetype="text/event-stream")
 
+
+
+@app.route('/logs/prune', methods=['POST'])
+def logs_prune():
+    # Prune lifecycle logs by age and total size cap.
+    try:
+        log_dir = pm.app_data_dir / 'server_logs'
+        log_dir.mkdir(parents=True, exist_ok=True)
+        result = _prune_log_dir(log_dir)
+        if session_logger:
+            session_logger.log('INFO', 'Logs pruned', metadata=result)
+        return jsonify({"success": True, **result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/export/report', methods=['GET'])
 def export_report():
     """Generate a high-fidelity HTML report."""
@@ -1127,6 +1258,49 @@ def export_report():
                                   log_payload=log_payload)
     return html
 
+@app.route('/export/report.json', methods=['GET'])
+def export_report_json():
+    """
+    JSON version of /export/report for in-app log browsing.
+    Designed for GUI inspection (raw), not for MCP stdio.
+    """
+    server_id = request.args.get("server")
+    try:
+        status_data = get_status().get_json()
+    except Exception:
+        status_data = {}
+    try:
+        logs_data = get_logs().get_json()
+    except Exception:
+        logs_data = []
+
+    servers_list = []
+    try:
+        servers_list = status_data.get("servers") or []
+    except Exception:
+        servers_list = []
+
+    target = None
+    if server_id:
+        for s in servers_list:
+            if s.get("id") == server_id:
+                target = s
+                break
+
+    payload = {
+        "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "server_id": server_id,
+        "target": target,
+        "servers": servers_list,
+        "recent_activity": (logs_data[-200:] if isinstance(logs_data, list) else logs_data),
+        "active_project": status_data.get("active_project"),
+        "core_components": status_data.get("core_components"),
+        "posture": status_data.get("posture"),
+    }
+    if server_id and target is None:
+        return jsonify({**payload, "error": f"Requested server id was not found in inventory: {server_id}"}), 404
+    return jsonify(payload)
+
 @app.route('/nexus/catalog', methods=['GET'])
 def nexus_catalog():
     """Return a metadata catalog of all reachable Nexus commands."""
@@ -1250,26 +1424,106 @@ def project_history():
     snaps = sorted(snapshot_dir.glob("inventory_*.yaml"), reverse=True)
     return jsonify([{"name": s.name, "path": str(s), "time": s.stat().st_mtime} for s in snaps])
 
+def _candidate_repo_dirs() -> list[Path]:
+    # Dual-state aware: prefer explicit, non-crawling candidates only.
+    candidates: list[Path] = []
+    try:
+        candidates.append(Path.cwd())
+    except Exception:
+        pass
+    # Test harness hint: allow unit tests to inject a deterministic project root.
+    # (Keeps production behavior unchanged unless explicitly set.)
+    try:
+        hinted = os.environ.get("NEXUS_PROJECT_PATH")
+        if hinted:
+            candidates.append(Path(hinted).expanduser())
+    except Exception:
+        pass
+    try:
+        if isinstance(pm.active_project, dict) and pm.active_project.get("path"):
+            candidates.append(Path(pm.active_project["path"]))
+    except Exception:
+        pass
+    try:
+        candidates.append(BASE_DIR)
+    except Exception:
+        pass
+    try:
+        candidates.append(NEXUS_HOME / "mcp-server-manager")
+    except Exception:
+        pass
+
+    seen = set()
+    uniq: list[Path] = []
+    for c in candidates:
+        # Do not resolve symlinks here. Some environments (notably macOS) can
+        # canonicalize `/tmp` to `/private/tmp`, which breaks deterministic
+        # path-based tests and can cause false "not found" results for callers
+        # that provide explicit paths.
+        try:
+            c = c.expanduser()
+        except Exception:
+            pass
+        key = str(c)
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(c)
+    return uniq
+
+def _select_git_repo_dir() -> Tuple[Optional[Path], list[str]]:
+    candidates = _candidate_repo_dirs()
+    for c in candidates:
+        if (c / ".git").exists():
+            return c, [str(x) for x in candidates]
+    return None, [str(x) for x in candidates]
+
+def _select_python_project_dir() -> Tuple[Optional[Path], list[str], Optional[str]]:
+    candidates = _candidate_repo_dirs()
+    for c in candidates:
+        try:
+            pyp = (c / "pyproject.toml")
+        except Exception:
+            pyp = None
+        if pyp is not None and pyp.exists():
+            return c, [str(x) for x in candidates], "pyproject"
+        try:
+            req = (c / "requirements.txt")
+        except Exception:
+            req = None
+        if req is not None and req.exists():
+            return c, [str(x) for x in candidates], "requirements"
+    return None, [str(x) for x in candidates], None
+
 @app.route('/system/update/nexus', methods=['POST'])
 def system_update_nexus():
     """Update the Nexus Suite (git pull + reinstall)."""
     try:
         payload = request.get_json(silent=True) or {}
-        if bool(payload.get("dry_run")):
-            repo_dir = Path.cwd()
-            if (repo_dir / ".git").exists():
-                return jsonify({"success": True, "dry_run": True, "cmd": ["git", "pull"], "cwd": str(repo_dir)})
-            return jsonify({"success": False, "dry_run": True, "error": "Not a git repository."}), 400
+        repo_dir, candidates = _select_git_repo_dir()
+        if not repo_dir:
+            return jsonify({
+                "success": False,
+                "error": "No git repository found for Nexus update. Run from a workspace repo or re-sync the managed mirror.",
+                "candidates": candidates,
+            }), 400
 
-        # Assumes running from source
-        root = pm.app_data_dir.parent # strict assumption, usage varies
-        # Better: use the current working directory if it's a git repo
-        repo_dir = Path.cwd()
-        if (repo_dir / ".git").exists():
-             subprocess.Popen(["git", "pull"], cwd=repo_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-             # We might need to restart the bridge?
-             return jsonify({"success": True, "message": "Git pull initiated. Please restart the bridge to apply changes."})
-        return jsonify({"error": "Not a git repository."}), 400
+        if bool(payload.get("dry_run")):
+            return jsonify({
+                "success": True,
+                "dry_run": True,
+                "cmd": ["git", "pull"],
+                "cwd": str(repo_dir),
+                "candidates": candidates,
+            })
+
+        subprocess.Popen(["git", "pull"], cwd=repo_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # We might need to restart the bridge?
+        return jsonify({
+            "success": True,
+            "message": "Git pull initiated. Please restart the bridge to apply changes.",
+            "cwd": str(repo_dir),
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1304,21 +1558,33 @@ def system_update_python():
     try:
         payload = request.get_json(silent=True) or {}
         dry_run = bool(payload.get("dry_run"))
-        repo_dir = Path.cwd()
-        if (repo_dir / "pyproject.toml").exists():
+        repo_dir, candidates, mode = _select_python_project_dir()
+        if not repo_dir:
+            return jsonify({
+                "success": False,
+                "error": "No pyproject.toml or requirements.txt found in candidate repos.",
+                "candidates": candidates,
+            }), 400
+
+        if mode == "pyproject":
             cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "-e", "."]
-        elif (repo_dir / "requirements.txt").exists():
-            cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"]
         else:
-            return jsonify({"success": False, "error": "No pyproject.toml or requirements.txt found in current repo."}), 400
+            cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"]
 
         if dry_run:
-            return jsonify({"success": True, "dry_run": True, "cmd": cmd, "cwd": str(repo_dir)})
+            return jsonify({
+                "success": True,
+                "dry_run": True,
+                "cmd": cmd,
+                "cwd": str(repo_dir),
+                "mode": mode,
+                "candidates": candidates,
+            })
 
         subprocess.Popen(cmd, cwd=repo_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if session_logger:
             session_logger.log("COMMAND", "Python dependency upgrade initiated", suggestion="Upgrade running in background.", metadata={"cmd": cmd, "cwd": str(repo_dir)})
-        return jsonify({"success": True, "message": "Python dependency upgrade initiated in background.", "cmd": cmd, "cwd": str(repo_dir)})
+        return jsonify({"success": True, "message": "Python dependency upgrade initiated in background.", "cmd": cmd, "cwd": str(repo_dir), "mode": mode})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1594,14 +1860,41 @@ def server_control():
     if not target: return jsonify({"error": "Server not found"}), 404
 
     cmd = target.get("run", {}).get("start_cmd" if action == "start" else "stop_cmd")
+
+    def _sanitize_run_cmd(raw: str) -> str:
+        # Commands come from inventory and are executed without a shell (via shlex.split).
+        # Strip common shell operators to avoid confusing pkill/argv parsing (e.g. 'pkill -f x || true').
+        for op in ('||', '&&', ';'):
+            if op in raw:
+                raw = raw.split(op, 1)[0].strip()
+        return raw
     if not cmd: return jsonify({"error": f"No {action} command defined"}), 400
 
     try:
+        log_dir = pm.app_data_dir / "server_logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        def _write_action_log(action_name: str, lines: list[str]) -> Optional[str]:
+            try:
+                stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                lp = log_dir / f"{s_id}_{stamp}.log"
+                with open(lp, "w", encoding="utf-8") as f:
+                    f.write(f"--- SERVER: {s_id} ---\n")
+                    f.write(f"--- ACTION: {action_name} ---\n")
+                    for ln in lines:
+                        f.write(f"{ln}\n")
+                    f.write("\n")
+                return str(lp)
+            except Exception:
+                return None
+
         if action != "start":
-            subprocess.Popen(shlex.split(cmd), start_new_session=True)
+            stop_cmd = _sanitize_run_cmd(str(cmd))
+            stop_log = _write_action_log("stop", [f"--- CMD: {stop_cmd}", f"--- TS: {datetime.datetime.now().isoformat()}"])
+            subprocess.Popen(shlex.split(stop_cmd), start_new_session=True)
             if session_logger:
                 session_logger.log("COMMAND", f"Server {s_id}: {action}", suggestion=f"Triggered: {cmd}")
-            return jsonify({"success": True})
+            return jsonify({"success": True, "log_path": stop_log})
 
         argv, cwd, env, note, requires_python = _resolve_server_run(target)
         if not argv:
@@ -1662,6 +1955,16 @@ def server_control():
                         msg = f"Python {ver[0]}.{ver[1]}.{ver[2]} is too old for requires-python '{requires_python}'."
                         if session_logger:
                             session_logger.log("ERROR", f"Blocked start for {s_id}: python mismatch", metadata={"requires_python": requires_python, "python": ver, "cmd": argv, "cwd": cwd})
+                        fail_log = _write_action_log(
+                            "start_failed",
+                            [
+                                f"--- CWD: {cwd or '(none)'} ---",
+                                f"--- CMD: {' '.join(argv)} ---",
+                                f"--- REQUIRES_PYTHON: {requires_python} ---",
+                                f"--- ERROR: Runtime mismatch: Python version too old ---",
+                                f"--- DETAIL: {msg} ---",
+                            ],
+                        )
                         return jsonify({
                             "success": False,
                             "error": "Runtime mismatch: Python version too old",
@@ -1672,10 +1975,9 @@ def server_control():
                             "cwd": cwd,
                             "note": note,
                             "next_step": f"mcp-observer runtime ensure --python {min_py[0]}.{min_py[1]}.0",
+                            "log_path": fail_log,
                         }), 409
 
-        log_dir = pm.app_data_dir / "server_logs"
-        log_dir.mkdir(parents=True, exist_ok=True)
         setup_log_path = None
 
         # If this is a real server project directory, prefer a per-server venv so dependencies
@@ -1731,6 +2033,22 @@ def server_control():
                     "log_path": str(log_path),
                 }
                 pm.last_server_exit[s_id] = meta
+                # Operational truthfulness: if a server stops after start, emit a COMMAND log entry
+                # so the UI timeline shows the failure and links to the exact lifecycle log.
+                try:
+                    started_at = pm.last_server_start.get(s_id)
+                    age = (time.time() - float(started_at)) if started_at else None
+                except Exception:
+                    age = None
+                if session_logger and (rc != 0 or (age is not None and age < 15.0)):
+                    try:
+                        session_logger.log_command(
+                            f"Server {s_id}: exited",
+                            'FAILED' if rc != 0 else 'SUCCESS',
+                            result=f"returncode={rc} log={log_path}" + (f" age_s={age:.1f}" if age is not None else ''),
+                        )
+                    except Exception:
+                        pass
                 try:
                     with open(log_path, "a", encoding="utf-8") as f2:
                         when = datetime.datetime.now().isoformat()

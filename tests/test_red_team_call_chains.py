@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import time
 import types
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -83,13 +84,11 @@ class TestRedTeamCallChains(unittest.TestCase):
     def test_system_update_nexus_invokes_git_pull(self):
         gb = self.gui_bridge
         repo = Path(self._tmpdir.name) / "repo"
-
-        def _fake_exists(self_path: Path) -> bool:
-            return str(self_path) == str(repo / ".git")
+        (repo / ".git").mkdir(parents=True, exist_ok=True)
 
         with patch.object(gb.Path, "cwd", return_value=repo), patch.object(
-            gb.Path, "exists", new=_fake_exists
-        ), patch.object(gb.subprocess, "Popen") as popen_mock:
+            gb.subprocess, "Popen"
+        ) as popen_mock:
             res = self.client.post("/system/update/nexus")
 
         self.assertEqual(res.status_code, 200)
@@ -98,7 +97,118 @@ class TestRedTeamCallChains(unittest.TestCase):
         popen_mock.assert_called_once()
         argv = popen_mock.call_args[0][0]
         self.assertEqual(argv[:2], ["git", "pull"])
-        self.assertEqual(popen_mock.call_args.kwargs.get("cwd"), repo)
+        self.assertEqual(Path(popen_mock.call_args.kwargs.get("cwd")).resolve(), repo.resolve())
+
+    def test_system_update_nexus_dry_run_uses_git_repo(self):
+        gb = self.gui_bridge
+        repo = Path(self._tmpdir.name) / "repo"
+        (repo / ".git").mkdir(parents=True, exist_ok=True)
+
+        with patch.object(gb.Path, "cwd", return_value=repo), patch.object(
+            gb.subprocess, "Popen"
+        ) as popen_mock:
+            res = self.client.post("/system/update/nexus", json={"dry_run": True})
+
+        self.assertEqual(res.status_code, 200)
+        payload = res.get_json()
+        self.assertTrue(payload.get("success"))
+        self.assertTrue(payload.get("dry_run"))
+        self.assertEqual(payload.get("cmd"), ["git", "pull"])
+        self.assertEqual(Path(payload.get("cwd")).resolve(), repo.resolve())
+        popen_mock.assert_not_called()
+
+    def test_system_update_python_dry_run_prefers_pyproject(self):
+        gb = self.gui_bridge
+        repo = Path(self._tmpdir.name) / "repo"
+        repo.mkdir(parents=True, exist_ok=True)
+        (repo / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+
+        with patch.object(gb.Path, "cwd", return_value=repo), patch.object(
+            gb.subprocess, "Popen"
+        ) as popen_mock:
+            res = self.client.post("/system/update/python", json={"dry_run": True})
+
+        self.assertEqual(res.status_code, 200)
+        payload = res.get_json()
+        self.assertTrue(payload.get("success"))
+        self.assertTrue(payload.get("dry_run"))
+        self.assertEqual(payload.get("cmd"), [gb.sys.executable, "-m", "pip", "install", "--upgrade", "-e", "."])
+        self.assertEqual(Path(payload.get("cwd")).resolve(), repo.resolve())
+        self.assertEqual(payload.get("mode"), "pyproject")
+        popen_mock.assert_not_called()
+
+    def test_system_update_python_dry_run_falls_back_to_requirements(self):
+        gb = self.gui_bridge
+        repo = Path(self._tmpdir.name) / "repo"
+        repo.mkdir(parents=True, exist_ok=True)
+        (repo / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")
+
+        with patch.object(gb.Path, "cwd", return_value=repo), patch.object(
+            gb.subprocess, "Popen"
+        ) as popen_mock:
+            res = self.client.post("/system/update/python", json={"dry_run": True})
+
+        self.assertEqual(res.status_code, 200)
+        payload = res.get_json()
+        self.assertTrue(payload.get("success"))
+        self.assertTrue(payload.get("dry_run"))
+        self.assertEqual(payload.get("cmd"), [gb.sys.executable, "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"])
+        self.assertEqual(Path(payload.get("cwd")).resolve(), repo.resolve())
+        self.assertEqual(payload.get("mode"), "requirements")
+        popen_mock.assert_not_called()
+
+    def test_server_control_start_writes_log_and_returns_resolved_cmd(self):
+        gb = self.gui_bridge
+        repo = Path(self._tmpdir.name)
+        server_dir = repo / "srv"
+        server_dir.mkdir(parents=True, exist_ok=True)
+        inv_path = repo / "inventory.yaml"
+        inv = {
+            "servers": [
+                {
+                    "id": "demo-server",
+                    "name": "demo-server",
+                    "path": str(server_dir),
+                    "run": {"start_cmd": "python3 mcp_server.py", "stop_cmd": "pkill -f demo-server"},
+                }
+            ]
+        }
+        inv_path.write_text(yaml.safe_dump(inv), encoding="utf-8")
+        gb.pm.inventory_path = inv_path
+
+        class _FakePopen:
+            def __init__(self, *args, **kwargs):
+                self.args = args
+                self.kwargs = kwargs
+
+            def poll(self):
+                return None
+
+            def wait(self, *args, **kwargs):
+                return 0
+
+        class _FakeThread:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def start(self):
+                return None
+
+        with patch.object(gb.subprocess, "Popen", side_effect=_FakePopen) as popen_mock, patch.object(
+            gb.threading, "Thread", side_effect=_FakeThread
+        ), patch.object(gb.time, "sleep", return_value=None):
+            res = self.client.post("/server/control", json={"id": "demo-server", "action": "start"})
+
+        self.assertEqual(res.status_code, 200)
+        payload = res.get_json()
+        self.assertTrue(payload.get("success"))
+        self.assertIn("log_path", payload)
+        self.assertEqual(payload.get("resolved_cmd"), ["python3", "mcp_server.py"])
+        log_path = Path(payload.get("log_path"))
+        self.assertTrue(log_path.exists())
+        text = log_path.read_text(encoding="utf-8")
+        self.assertIn("--- CMD: python3 mcp_server.py ---", text)
+        popen_mock.assert_called_once()
 
     def test_server_logs_latest_returns_tail(self):
         gb = self.gui_bridge
@@ -176,7 +286,9 @@ class TestRedTeamCallChains(unittest.TestCase):
         fake_tk.Tk = _Root
         fake_dialog.askdirectory = MagicMock(return_value="/tmp/selected")
 
-        with patch.dict(sys.modules, {"tkinter": fake_tk, "tkinter.filedialog": fake_dialog}):
+        with patch.dict(sys.modules, {"tkinter": fake_tk, "tkinter.filedialog": fake_dialog}), patch.dict(
+            gb.os.environ, {"NEXUS_HEADLESS": "0"}, clear=False
+        ), patch.object(gb.sys, "platform", "linux"):
             res = self.client.post("/os/pick_folder", json={})
 
         self.assertEqual(res.status_code, 200)

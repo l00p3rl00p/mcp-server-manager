@@ -30,6 +30,37 @@ const els = {
     wizardTitle: document.getElementById('wizard-title')
 };
 
+function showInlineNotice(message, level = 'error') {
+    let el = document.getElementById('nexus-inline-notice');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'nexus-inline-notice';
+        el.style.position = 'fixed';
+        el.style.right = '16px';
+        el.style.bottom = '16px';
+        el.style.maxWidth = '520px';
+        el.style.padding = '12px 14px';
+        el.style.borderRadius = '10px';
+        el.style.background = 'rgba(20, 20, 24, 0.92)';
+        el.style.border = '1px solid rgba(255,255,255,0.12)';
+        el.style.color = '#fff';
+        el.style.fontFamily = 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
+        el.style.fontSize = '13px';
+        el.style.lineHeight = '1.3';
+        el.style.zIndex = '9999';
+        el.style.display = 'none';
+        document.body.appendChild(el);
+    }
+
+    el.textContent = message;
+    el.style.display = 'block';
+    el.style.boxShadow = level === 'error' ? '0 12px 30px rgba(255, 80, 80, 0.25)' : '0 12px 30px rgba(0, 160, 255, 0.18)';
+    clearTimeout(el._hideTimer);
+    el._hideTimer = setTimeout(() => {
+        el.style.display = 'none';
+    }, 5500);
+}
+
 async function fetchFullState() {
     try {
         const res = await fetch(`${API_BASE}/state/full`);
@@ -83,11 +114,11 @@ async function toggleServer(serverName, checkbox) {
         const data = await res.json();
         if (!data.success) {
             checkbox.checked = !originalState;
-            alert(`Failed: ${data.message || 'Unknown error'}`);
+            showInlineNotice(`Failed: ${data.message || 'Unknown error'}`, 'error');
         }
     } catch (e) {
         checkbox.checked = !originalState;
-        alert(`Connection failed: ${e.message}`);
+        showInlineNotice(`Connection failed: ${e.message}`, 'error');
     }
 }
 
