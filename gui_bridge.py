@@ -758,10 +758,21 @@ def get_status():
     if db_path.exists():
         try:
             conn = sqlite3.connect(db_path)
-            resource_count = conn.execute("SELECT count(*) FROM links").fetchone()[0]
+            try:
+                resource_count = conn.execute("SELECT count(*) FROM links").fetchone()[0]
+            except sqlite3.OperationalError as e:
+                # Common in fresh installs / partial restores: DB exists but schema not initialized yet.
+                # Do not spam ERROR logs in status/report surfaces.
+                msg = str(e).lower()
+                if "no such table" in msg or "no such column" in msg:
+                    resource_count = 0
+                else:
+                    if session_logger:
+                        session_logger.log("WARNING", f"Resource count unavailable: {e}")
             conn.close()
         except Exception as e:
-            if session_logger: session_logger.log("ERROR", f"Project history fetch failed: {str(e)}")
+            if session_logger:
+                session_logger.log("WARNING", f"Resource count unavailable: {str(e)}")
             pass
 
     # Version Status
@@ -1012,13 +1023,29 @@ def export_report():
     <body>
         <h1>Nexus Server Report</h1>
         <p><strong>Generated:</strong> {{ time }}</p>
-        {% if server_id %}
-        <p><strong>Target Server:</strong> <code>{{ server_id }}</code></p>
-        {% endif %}
+        <div class="card">
+          <h2>Target Server</h2>
+          <form>
+            <label for="server" style="font-size:12px;color:#7f8c8d;">Select server</label><br/>
+            <select id="server" name="server" onchange="this.form.submit()" style="margin-top:8px;padding:10px;border-radius:10px;border:1px solid #ddd;min-width:260px;">
+              <option value="">(system-wide report)</option>
+              {% for s in servers %}
+                <option value="{{ s.id }}" {% if server_id == s.id %}selected{% endif %}>{{ s.name }} ({{ s.id }})</option>
+              {% endfor %}
+            </select>
+          </form>
+          {% if server_id %}
+            <p style="margin-top:10px;"><strong>Target Server:</strong> <code>{{ server_id }}</code></p>
+          {% endif %}
+          {% if server_id and not target %}
+            <p class="warning">Requested server id was not found in inventory: <code>{{ server_id }}</code></p>
+            <p style="font-size:12px;color:#7f8c8d;">Tip: choose a server from the dropdown above.</p>
+          {% endif %}
+        </div>
         
         {% if target %}
         <div class="card">
-            <h2>Target Server</h2>
+            <h2>Target Server Details</h2>
             <table>
                 <tr><th>Field</th><th>Value</th></tr>
                 <tr><td>Name</td><td>{{ target.name }}</td></tr>
@@ -1038,11 +1065,6 @@ def export_report():
             {% else %}
               <p class="warning" style="margin-top:18px;">No per-server start log found. Try starting the server once and re-open this report.</p>
             {% endif %}
-        </div>
-        {% elif server_id %}
-        <div class="card">
-            <h2>Target Server</h2>
-            <p class="warning">Requested server id was not found in inventory: <code>{{ server_id }}</code></p>
         </div>
         {% endif %}
 
@@ -1079,6 +1101,11 @@ def export_report():
     # Gather data
     status_data = get_status().get_json()
     logs_data = get_logs().get_json()
+    servers_list = []
+    try:
+        servers_list = status_data.get("servers") or []
+    except Exception:
+        servers_list = []
     target = None
     if server_id:
         try:
@@ -1094,6 +1121,7 @@ def export_report():
                                   project=pm.active_project,
                                   status=status_data,
                                   logs=logs_data,
+                                  servers=servers_list,
                                   server_id=server_id,
                                   target=target,
                                   log_payload=log_payload)

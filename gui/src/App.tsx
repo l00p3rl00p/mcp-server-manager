@@ -98,7 +98,7 @@ const App: React.FC = () => {
   const [pythonInfo, setPythonInfo] = useState<any>(null);
   const [purgeModalOpen, setPurgeModalOpen] = useState(false);
   const [purgeConfirmText, setPurgeConfirmText] = useState("");
-  const [purgePreview, setPurgePreview] = useState<{ ok: boolean; stdout: string; stderr: string } | null>(null);
+  const [purgePreview, setPurgePreview] = useState<{ ok: boolean; stdout: string; stderr: string; raw?: string } | null>(null);
   const [purgePreviewLoading, setPurgePreviewLoading] = useState(false);
   const [purgeOptions, setPurgeOptions] = useState({
     // Default reset: environments only (keep suite installed).
@@ -595,6 +595,16 @@ const App: React.FC = () => {
                               <Terminal size={18} />
                             </button>
 
+                            {/* HTML Report */}
+                            <button
+                              className="nav-item"
+                              style={{ padding: '8px' }}
+                              onClick={() => window.open(API_BASE + `/export/report?server=${encodeURIComponent(s.id)}`, '_blank')}
+                              title="Open HTML report"
+                            >
+                              <FileText size={18} />
+                            </button>
+
                             <button className="nav-item" style={{ padding: '8px' }} onClick={() => setSelectedItem(s.raw)} title="Inspect">
                               <Search size={18} />
                             </button>
@@ -729,6 +739,7 @@ const App: React.FC = () => {
                               : (s.status === 'online' ? 'Stop' : 'Start')}
                           </button>
                           <button className="nav-item" style={{ padding: '4px 8px' }} onClick={() => openLastStartLog(s.id)} title="View last start log"><Terminal size={14} /></button>
+                          <button className="nav-item" style={{ padding: '4px 8px' }} onClick={() => window.open(API_BASE + `/export/report?server=${encodeURIComponent(s.id)}`, '_blank')} title="Open HTML report"><FileText size={14} /></button>
                           <button className="nav-item" style={{ padding: '4px 8px' }} onClick={() => setSelectedItem(s.raw)} title="Inspect"><Search size={14} /></button>
                           {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager', 'nexus-librarian'].includes(s.id) ? (
                             <>
@@ -1737,10 +1748,13 @@ const App: React.FC = () => {
                           });
                           const d = await res.json().catch(() => ({}));
                           const ok = !!d?.success;
-                          setPurgePreview({ ok, stdout: String(d?.stdout || ''), stderr: String(d?.stderr || d?.error || '') });
+                          const raw = (() => {
+                            try { return JSON.stringify(d, null, 2); } catch { return String(d); }
+                          })();
+                          setPurgePreview({ ok, stdout: String(d?.stdout || ''), stderr: String(d?.stderr || d?.error || ''), raw });
                           addNotification(ok ? "Preview generated." : "Preview failed.", ok ? "success" : "error");
                         } catch (e) {
-                          setPurgePreview({ ok: false, stdout: "", stderr: String(e) });
+                          setPurgePreview({ ok: false, stdout: "", stderr: String(e), raw: String(e) });
                           addNotification(String(e), "error");
                         } finally {
                           setPurgePreviewLoading(false);
@@ -1761,7 +1775,7 @@ const App: React.FC = () => {
                         <button
                           className="nav-item"
                           onClick={() => {
-                            const text = [purgePreview.stdout, purgePreview.stderr].filter(Boolean).join("\n");
+                            const text = [purgePreview.raw || "", purgePreview.stdout, purgePreview.stderr].filter(Boolean).join("\n");
                             navigator.clipboard?.writeText(text);
                             addNotification("Copied preview output.", "success");
                           }}

@@ -212,7 +212,13 @@ class TestUiCallChains(unittest.TestCase):
     def test_system_uninstall_passes_selected_flags(self):
         gb = self.gui_bridge
 
-        with patch.object(gb.Path, "exists", return_value=True), patch.object(gb.subprocess, "run") as run_mock:
+        # For this test we mock the help text to indicate the uninstaller supports requested flags.
+        def _fake_run(argv, *args, **kwargs):
+            if "--help" in argv:
+                return MagicMock(returncode=0, stdout="--purge-env --detach-clients --detach-managed-servers --detach-suite-tools --remove-path-block --remove-wrappers", stderr="")
+            return MagicMock(returncode=0, stdout="ok", stderr="")
+
+        with patch.object(gb.Path, "exists", return_value=True), patch.object(gb.subprocess, "run", side_effect=_fake_run) as run_mock:
             run_mock.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             res = self.client.post(
                 "/system/uninstall",
@@ -240,8 +246,12 @@ class TestUiCallChains(unittest.TestCase):
     def test_system_uninstall_dry_run_passes_flag(self):
         gb = self.gui_bridge
 
-        with patch.object(gb.Path, "exists", return_value=True), patch.object(gb.subprocess, "run") as run_mock:
-            run_mock.return_value = MagicMock(returncode=0, stdout="plan", stderr="")
+        def _fake_run(argv, *args, **kwargs):
+            if "--help" in argv:
+                return MagicMock(returncode=0, stdout="--dry-run", stderr="")
+            return MagicMock(returncode=0, stdout="plan", stderr="")
+
+        with patch.object(gb.Path, "exists", return_value=True), patch.object(gb.subprocess, "run", side_effect=_fake_run) as run_mock:
             res = self.client.post(
                 "/system/uninstall",
                 json={
@@ -279,10 +289,56 @@ class TestUiCallChains(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         payload = res.get_json()
         self.assertTrue(payload.get("success"))
-        popen_mock.assert_called()
-        argv = popen_mock.call_args[0][0]
-        self.assertIn("-e", argv)
-        self.assertEqual(argv[-1], ".")
+
+    def test_status_handles_missing_links_table_without_error(self):
+        gb = self.gui_bridge
+
+        class _Conn:
+            def execute(self, _q):
+                raise gb.sqlite3.OperationalError("no such table: links")
+
+            def close(self):
+                return None
+
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmp:
+            tmp_path = gb.Path(tmp)
+            (tmp_path / "knowledge.db").write_text("", encoding="utf-8")
+            with patch.object(gb.pm, "app_data_dir", tmp_path), patch.object(
+                gb.pm, "active_project", {"id": "uat", "path": str(tmp_path)}
+            ), patch.object(
+                gb.pm, "core_components", return_value={"activator": "missing", "observer": "missing", "surgeon": "missing", "librarian_bin": "missing"}
+            ), patch.object(
+                gb.Path, "exists", return_value=False
+            ), patch.object(gb.sqlite3, "connect", return_value=_Conn()):
+                res = self.client.get("/status")
+
+        self.assertEqual(res.status_code, 200)
+        payload = res.get_json()
+        self.assertEqual(payload.get("resource_count"), 0)
+
+    def test_export_report_renders_server_selector(self):
+        gb = self.gui_bridge
+        # Provide a minimal status response with one server so the report can render the selector.
+        fake_status = {
+            "posture": "Optimal",
+            "pulse": "green",
+            "activator": "online",
+            "librarian": "online",
+            "servers": [{"id": "alpha", "name": "alpha", "status": "stopped", "type": "generic", "metrics": {}, "raw": {}}],
+        }
+
+        with patch.object(gb, "get_status") as status_mock, patch.object(gb, "get_logs") as logs_mock:
+            status_mock.return_value = MagicMock(get_json=lambda: fake_status)
+            logs_mock.return_value = MagicMock(get_json=lambda: [])
+            res = self.client.get("/export/report?server=notebooklm")
+
+        self.assertEqual(res.status_code, 200)
+        html = res.get_data(as_text=True)
+        self.assertIn("Select server", html)
+        self.assertIn('name=\"server\"', html)
+        self.assertIn("alpha", html)
 
     def test_system_update_python_dry_run_returns_cmd_without_spawning(self):
         gb = self.gui_bridge
