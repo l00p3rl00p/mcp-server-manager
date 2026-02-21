@@ -328,7 +328,8 @@ textarea {
 }
 
 .metric-backdrop.open {
-  background: rgba(0, 0, 0, 0.4);
+  /* No dimming/opacity: side-panels should not "take over" the screen. */
+  background: rgba(0, 0, 0, 0);
   pointer-events: all;
 }
 
@@ -353,18 +354,4 @@ textarea {
 
 .metric-side-panel>* {
   min-width: 380px;
-}
-
-.inspector-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
