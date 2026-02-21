@@ -1422,27 +1422,81 @@ def export_logs():
 @app.route('/system/uninstall', methods=['POST'])
 def system_uninstall():
     try:
-        def _find_uninstaller() -> Optional[Path]:
-            # 1) Managed mirror (runtime truth)
-            p1 = (NEXUS_HOME / "repo-mcp-packager" / "uninstall.py").resolve()
-            if p1.exists():
-                return p1
-            # 2) Workspace (developer truth): suite root is parent of mcp-server-manager
+        def _candidate_uninstallers() -> list[Path]:
+            out: list[Path] = []
+            # Workspace (developer truth): suite root is parent of mcp-server-manager
             try:
                 suite_root = Path(__file__).resolve().parent.parent
-                p2 = (suite_root / "repo-mcp-packager" / "uninstall.py").resolve()
-                if p2.exists():
-                    return p2
+                p_ws = (suite_root / "repo-mcp-packager" / "uninstall.py").resolve()
+                if p_ws.exists():
+                    out.append(p_ws)
             except Exception:
                 pass
-            return None
 
-        uninstaller = _find_uninstaller()
+            # Managed mirror (runtime truth)
+            p_mirror = (NEXUS_HOME / "repo-mcp-packager" / "uninstall.py").resolve()
+            if p_mirror.exists():
+                out.append(p_mirror)
+
+            # de-dupe by real path
+            seen: set[Path] = set()
+            uniq: list[Path] = []
+            for p in out:
+                rp = p.resolve()
+                if rp in seen:
+                    continue
+                seen.add(rp)
+                uniq.append(rp)
+            return uniq
+
+        def _supports_flags(p: Path, flags: list[str]) -> bool:
+            try:
+                r = subprocess.run([sys.executable, str(p), "--help"], capture_output=True, text=True, timeout=5)
+                help_txt = (r.stdout or "") + "\n" + (r.stderr or "")
+                return all(f in help_txt for f in flags)
+            except Exception:
+                return False
+
+        payload = request.json or {}
+        needs = []
+        if payload.get("detach_clients"):
+            needs.append("--detach-clients")
+        if payload.get("purge_env"):
+            needs.append("--purge-env")
+        if payload.get("detach_managed_servers"):
+            needs.append("--detach-managed-servers")
+        if payload.get("detach_suite_tools"):
+            needs.append("--detach-suite-tools")
+        if payload.get("remove_path_block"):
+            needs.append("--remove-path-block")
+        if payload.get("remove_wrappers"):
+            needs.append("--remove-wrappers")
+
+        candidates = _candidate_uninstallers()
+        uninstaller = None
+        for c in candidates:
+            if needs and not _supports_flags(c, needs):
+                continue
+            uninstaller = c
+            break
+
+        if not uninstaller:
+            # Fall back to any candidate, but return a clear error if it can't support requested flags.
+            if candidates:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": "Uninstaller found, but it does not support requested options. Run sync/update, or use the workspace version.",
+                        "candidates": [str(p) for p in candidates],
+                        "requested_flags": needs,
+                    }
+                ), 409
+            uninstaller = None
+
         if not uninstaller:
             return jsonify({"success": False, "error": "Uninstaller not found"}), 404
         if session_logger:
             session_logger.log("COMMAND", "Factory Reset Initiated", suggestion="Purging all suite data and settings.")
-        payload = request.json or {}
         purge_data = bool(payload.get("purge_data", True))
         purge_env = bool(payload.get("purge_env", False))
         kill_venv = bool(payload.get("kill_venv", True))
@@ -1473,8 +1527,31 @@ def system_uninstall():
         if dry_run:
             cmd.append("--dry-run")
 
+        # Guardrail: avoid running an older uninstaller that doesn't support requested flags.
+        # Even if the "supports_flags" preflight misses something, detect argparse failures
+        # and return a deterministic remediation message (instead of surfacing a scary stack).
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        return jsonify({"success": result.returncode == 0, "stdout": result.stdout, "stderr": result.stderr})
+        stderr = result.stderr or ""
+        if "unrecognized arguments:" in stderr:
+            try:
+                help_res = subprocess.run([sys.executable, str(uninstaller), "--help"], capture_output=True, text=True, timeout=5)
+                help_head = "\n".join(((help_res.stdout or "") + "\n" + (help_res.stderr or "")).splitlines()[:6])
+            except Exception:
+                help_head = ""
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Installed uninstaller is out of date and does not support the selected reset options. Run suite sync/update, then retry Preview.",
+                        "uninstaller": str(uninstaller),
+                        "cmd": cmd,
+                        "stderr": stderr,
+                        "help_head": help_head,
+                    }
+                ),
+                409,
+            )
+        return jsonify({"success": result.returncode == 0, "stdout": result.stdout, "stderr": stderr, "cmd": cmd, "uninstaller": str(uninstaller)})
     except Exception as e:
         if session_logger:
             session_logger.log("ERROR", f"Uninstall failure: {str(e)}")
