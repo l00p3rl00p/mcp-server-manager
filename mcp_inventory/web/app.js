@@ -144,7 +144,12 @@ function triggerAction(command, body = null) {
 function openWizard(title) {
     els.wizardTitle.textContent = title.toUpperCase();
     els.wizardStatus.textContent = "Launching Neural Pipeline...";
-    els.wizardLogs.innerHTML = '<div>> Initializing workforce nexus...</div>';
+    els.wizardLogs.textContent = '';
+    {
+        const line = document.createElement('div');
+        line.textContent = '> Initializing workforce nexus...';
+        els.wizardLogs.appendChild(line);
+    }
     els.wizardProgress.style.width = '10%';
     els.wizardDoneBtn.style.display = 'none';
     els.wizard.style.display = 'flex';
@@ -168,73 +173,154 @@ function startWizardPolling(logName) {
 }
 
 function renderWizardLines(lines) {
-    let html = '';
+    els.wizardLogs.textContent = '';
     lines.forEach(l => {
         if (l.includes('JSON_LOG:')) {
-            const entry = JSON.parse(l.split('JSON_LOG:')[1]);
-            html += `<div><span class="event-tag">${entry.event.toUpperCase()}</span> ${entry.message}</div>`;
-            els.wizardStatus.textContent = entry.message;
+            let entry;
+            try {
+                entry = JSON.parse(l.split('JSON_LOG:')[1]);
+            } catch (e) {
+                entry = { event: 'log', message: l };
+            }
+            const row = document.createElement('div');
+            const tag = document.createElement('span');
+            tag.className = 'event-tag';
+            tag.textContent = String(entry.event || 'log').toUpperCase();
+            row.appendChild(tag);
+            row.appendChild(document.createTextNode(' ' + String(entry.message || '')));
+            els.wizardLogs.appendChild(row);
+            els.wizardStatus.textContent = String(entry.message || '');
             if (entry.event.includes('complete')) {
                 els.wizardProgress.style.width = '100%';
                 els.wizardDoneBtn.style.display = 'block';
             }
         } else {
-            html += `<div>${l}</div>`;
+            const row = document.createElement('div');
+            row.textContent = String(l);
+            els.wizardLogs.appendChild(row);
         }
     });
-    els.wizardLogs.innerHTML = html;
     els.wizardLogs.scrollTop = els.wizardLogs.scrollHeight;
 }
 
 // --- Rendering ---
 function renderHealth() {
     if (!els.healthMetrics || !state.health) return;
-    els.healthMetrics.innerHTML = state.health.checks.map(c => `
-        <div class="metric-item">
-            <span class="metric-val">${c.status === 'ok' ? '✅' : '❌'}</span>
-            <span class="metric-label">${c.name}</span>
-            <div style="font-size: 0.75rem; color: var(--text-secondary);">${c.message}</div>
-        </div>
-    `).join('');
+    els.healthMetrics.textContent = '';
+    (state.health.checks || []).forEach(c => {
+        const item = document.createElement('div');
+        item.className = 'metric-item';
+
+        const val = document.createElement('span');
+        val.className = 'metric-val';
+        val.textContent = c.status === 'ok' ? '✅' : '❌';
+        item.appendChild(val);
+
+        const label = document.createElement('span');
+        label.className = 'metric-label';
+        label.textContent = String(c.name || '');
+        item.appendChild(label);
+
+        const msg = document.createElement('div');
+        msg.style.fontSize = '0.75rem';
+        msg.style.color = 'var(--text-secondary)';
+        msg.textContent = String(c.message || '');
+        item.appendChild(msg);
+
+        els.healthMetrics.appendChild(item);
+    });
 }
 
 function renderInventory() {
     if (!els.inventoryTableBody) return;
     els.inventoryCount.textContent = `${state.inventory.length} Network Nodes`;
 
-    els.inventoryTableBody.innerHTML = state.inventory.map(e => {
+    els.inventoryTableBody.textContent = '';
+    (state.inventory || []).forEach(e => {
         const serverInConfig = state.configState.mcpServers[e.id];
         const isEnabled = serverInConfig ? !serverInConfig.disabled : true;
         const hasToggle = !!serverInConfig;
 
-        return `
-            <tr>
-                <td><strong>${e.name || e.id}</strong></td>
-                <td><span class="status-badge ${isEnabled ? 'status-ok' : 'status-warn'}">${isEnabled ? 'Active' : 'Disabled'}</span></td>
-                <td>
-                    ${hasToggle ? `
-                        <label class="switch">
-                            <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleServer('${e.id}', this)">
-                            <span class="slider"></span>
-                        </label>
-                    ` : '<span class="sub-text">External</span>'}
-                </td>
-                <td class="sub-text">${e.path}</td>
-                <td><button class="btn secondary" style="padding: 4px 8px; font-size: 0.8rem;" onclick="triggerAction('update', {path: '${e.path}'})">Update</button></td>
-            </tr>
-        `;
-    }).join('');
+        const tr = document.createElement('tr');
+
+        const tdName = document.createElement('td');
+        const strong = document.createElement('strong');
+        strong.textContent = String(e.name || e.id || '');
+        tdName.appendChild(strong);
+        tr.appendChild(tdName);
+
+        const tdStatus = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = `status-badge ${isEnabled ? 'status-ok' : 'status-warn'}`;
+        badge.textContent = isEnabled ? 'Active' : 'Disabled';
+        tdStatus.appendChild(badge);
+        tr.appendChild(tdStatus);
+
+        const tdToggle = document.createElement('td');
+        if (hasToggle) {
+            const label = document.createElement('label');
+            label.className = 'switch';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = !!isEnabled;
+            input.addEventListener('change', () => toggleServer(String(e.id || ''), input));
+            const slider = document.createElement('span');
+            slider.className = 'slider';
+            label.appendChild(input);
+            label.appendChild(slider);
+            tdToggle.appendChild(label);
+        } else {
+            const ext = document.createElement('span');
+            ext.className = 'sub-text';
+            ext.textContent = 'External';
+            tdToggle.appendChild(ext);
+        }
+        tr.appendChild(tdToggle);
+
+        const tdPath = document.createElement('td');
+        tdPath.className = 'sub-text';
+        tdPath.textContent = String(e.path || '');
+        tr.appendChild(tdPath);
+
+        const tdManage = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.className = 'btn secondary';
+        btn.style.padding = '4px 8px';
+        btn.style.fontSize = '0.8rem';
+        btn.textContent = 'Update';
+        btn.addEventListener('click', () => triggerAction('update', { path: String(e.path || '') }));
+        tdManage.appendChild(btn);
+        tr.appendChild(tdManage);
+
+        els.inventoryTableBody.appendChild(tr);
+    });
 }
 
 function renderLogs() {
     if (!els.logViewer) return;
-    els.logViewer.innerHTML = state.logs.map(l => `
-        <div class="log-entry">
-            <span class="log-time">${l.timestamp ? l.timestamp.split(' ')[1] : ''}</span>
-            <span class="log-level level-${l.level}">${l.level}</span>
-            <span>${l.message}</span>
-        </div>
-    `).join('');
+    els.logViewer.textContent = '';
+    (state.logs || []).forEach(l => {
+        const row = document.createElement('div');
+        row.className = 'log-entry';
+
+        const time = document.createElement('span');
+        time.className = 'log-time';
+        const ts = l.timestamp ? String(l.timestamp) : '';
+        time.textContent = ts.includes(' ') ? ts.split(' ')[1] : ts;
+        row.appendChild(time);
+
+        const level = document.createElement('span');
+        const lvl = String(l.level || '');
+        level.className = `log-level level-${lvl}`;
+        level.textContent = lvl;
+        row.appendChild(level);
+
+        const msg = document.createElement('span');
+        msg.textContent = String(l.message || '');
+        row.appendChild(msg);
+
+        els.logViewer.appendChild(row);
+    });
 }
 
 function renderNexusStatus() {
