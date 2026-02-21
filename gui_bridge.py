@@ -12,7 +12,7 @@ import time
 import re
 import shutil
 import threading
-__version__ = "3.3.1"
+__version__ = "3.3.4"
 
 METRIC_HISTORY = deque(maxlen=60)
 from pathlib import Path
