@@ -28,6 +28,24 @@ PORT = int(os.environ.get("NEXUS_PORT", "5001"))
 HOST = os.environ.get("NEXUS_BIND", "127.0.0.1")
 DASHBOARD_URL = f"http://localhost:{PORT}"
 
+def _pidfile() -> Path:
+    home = Path(os.environ.get("HOME") or str(Path.home())).expanduser()
+    return home / ".mcpinv" / "nexus.pid"
+
+def _write_pidfile() -> None:
+    try:
+        p = _pidfile()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(str(os.getpid()) + "\n", encoding="utf-8")
+    except Exception:
+        return
+
+def _remove_pidfile() -> None:
+    try:
+        _pidfile().unlink(missing_ok=True)
+    except Exception:
+        return
+
 # ────────────────────────────────────────────────────────────────────────────
 # Icon — generate a simple coloured dot; replace with a real .png if desired
 # ────────────────────────────────────────────────────────────────────────────
@@ -81,6 +99,7 @@ def _on_quit(icon, item):
 # Main — tray icon owns the main thread
 # ────────────────────────────────────────────────────────────────────────────
 def main():
+    _write_pidfile()
     # ── Start Flask in background daemon thread ──
     flask_thread = threading.Thread(target=_run_flask, daemon=True, name="nexus-flask")
     flask_thread.start()
@@ -112,7 +131,10 @@ def main():
         ),
     )
 
-    icon.run()   # blocks on main thread
+    try:
+        icon.run()   # blocks on main thread
+    finally:
+        _remove_pidfile()
 
 
 

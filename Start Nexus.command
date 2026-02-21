@@ -40,6 +40,7 @@ mkdir -p "$HOME/.mcpinv"
 nohup python3 nexus_tray.py > "$HOME/.mcpinv/nexus.log" 2>&1 &
 PID=$!
 disown $PID
+echo "$PID" > "$HOME/.mcpinv/nexus.pid" 2>/dev/null || true
 
 # Give it a moment to initialize
 sleep 2
@@ -57,4 +58,3 @@ else
 fi
 
 exit 0
-

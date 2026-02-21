@@ -99,7 +99,7 @@ def _fallback_central_uninstall(*, kill_venv: bool, purge_data: bool, verbose: b
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Uninstall Nexus Commander (central-only; does not touch your git workspace)"
+        description="Uninstall Nexus Commander (central-only; does not touch your git workspace). Full wipe writes a Desktop purge checklist."
     )
     parser.add_argument("--kill-venv", action="store_true", help="Remove Nexus venvs created under ~/.mcp-tools")
     parser.add_argument("--purge-data", action="store_true", help="Remove central suite data (~/.mcp-tools) and observer state (~/.mcpinv)")
