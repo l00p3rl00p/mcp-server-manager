@@ -18,6 +18,8 @@ import time
 import sys
 import os
 from pathlib import Path
+import json
+from datetime import datetime, timezone
 
 # ── Ensure the project root is on sys.path so gui_bridge imports cleanly ──
 PROJECT_DIR = Path(__file__).parent.resolve()
@@ -28,21 +30,46 @@ PORT = int(os.environ.get("NEXUS_PORT", "5001"))
 HOST = os.environ.get("NEXUS_BIND", "127.0.0.1")
 DASHBOARD_URL = f"http://localhost:{PORT}"
 
-def _pidfile() -> Path:
+def _mcpinv_home() -> Path:
+    env = os.environ.get("MCPINV_HOME")
+    if env:
+        return Path(env).expanduser()
     home = Path(os.environ.get("HOME") or str(Path.home())).expanduser()
-    return home / ".mcpinv" / "nexus.pid"
+    return home / ".mcpinv"
+
+def _pidfile() -> Path:
+    return _mcpinv_home() / "nexus.pid"
+
+def _pidfile_json() -> Path:
+    return _mcpinv_home() / "nexus.pid.json"
 
 def _write_pidfile() -> None:
     try:
         p = _pidfile()
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(str(os.getpid()) + "\n", encoding="utf-8")
+        _pidfile_json().write_text(
+            json.dumps(
+                {
+                    "tag": "nexus_tray",
+                    "pid": os.getpid(),
+                    "port": PORT,
+                    "host": HOST,
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
     except Exception:
         return
 
 def _remove_pidfile() -> None:
     try:
         _pidfile().unlink(missing_ok=True)
+        _pidfile_json().unlink(missing_ok=True)
     except Exception:
         return
 

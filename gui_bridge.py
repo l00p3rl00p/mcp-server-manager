@@ -151,17 +151,19 @@ if session_logger is not None:
                 return None
         session_logger.log = _safe_log
 
-# Base Discovery
-NEXUS_HOME = Path.home() / ".mcp-tools"
-PROJECTS_FILE = Path.home() / ".mcpinv" / "projects.json"
-ACTIVE_CONTEXT_FILE = Path.home() / ".mcpinv" / "active_context.json"
+# Base Discovery (portable + test-friendly)
+# Allow overriding state directories so tests/CI never write to the real home folder.
+NEXUS_HOME = Path(os.environ.get("NEXUS_HOME") or (Path.home() / ".mcp-tools")).expanduser()
+MCPINV_HOME = Path(os.environ.get("MCPINV_HOME") or (Path.home() / ".mcpinv")).expanduser()
+PROJECTS_FILE = MCPINV_HOME / "projects.json"
+ACTIVE_CONTEXT_FILE = MCPINV_HOME / "active_context.json"
 
 class ProjectManager:
     def __init__(self):
         self.active_project = None
         self.app_data_dir = NEXUS_HOME / "mcp-server-manager"
         self.inventory_path = self.app_data_dir / "inventory.yaml"
-        self.log_path = Path.home() / ".mcpinv" / "session.jsonl"
+        self.log_path = MCPINV_HOME / "session.jsonl"
         self.bin_dir = NEXUS_HOME / "bin"
         self.watcher_proc = None # Track the PID
         self.last_server_cmd: Dict[str, list[str]] = {}  # Best-effort: track actual started argv per server id
@@ -1554,40 +1556,149 @@ def nexus_help():
 
 @app.route('/system/update/python', methods=['POST'])
 def system_update_python():
-    """Update Python dependencies."""
+    """
+    Upgrade the *bridge* Python environment (the interpreter running this server).
+
+    NOTE: MCP servers generally have their own environments; use `/server/update/<id>`
+    to upgrade a specific managed server.
+    """
     try:
         payload = request.get_json(silent=True) or {}
         dry_run = bool(payload.get("dry_run"))
-        repo_dir, candidates, mode = _select_python_project_dir()
-        if not repo_dir:
-            return jsonify({
-                "success": False,
-                "error": "No pyproject.toml or requirements.txt found in candidate repos.",
-                "candidates": candidates,
-            }), 400
-
-        if mode == "pyproject":
-            cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "-e", "."]
-        else:
-            cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"]
+        bridge_python = sys.executable
+        cmd = [bridge_python, "-m", "pip", "install", "--upgrade", "pip"]
 
         if dry_run:
             return jsonify({
                 "success": True,
                 "dry_run": True,
                 "cmd": cmd,
-                "cwd": str(repo_dir),
-                "mode": mode,
-                "candidates": candidates,
+                "cwd": None,
+                "mode": "bridge-env",
+                "note": "Upgrades pip for the running bridge interpreter.",
             })
 
-        subprocess.Popen(cmd, cwd=repo_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log_root = _home() / ".mcpinv" / "upgrades"
+        log_root.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+        log_path = log_root / f"bridge_pip_upgrade_{stamp}.log"
+        with open(log_path, "w") as f:
+            f.write("=== Nexus Bridge Pip Upgrade ===\n")
+            f.write(f"python: {bridge_python}\n")
+            f.write(f"cmd: {' '.join(shlex.quote(x) for x in cmd)}\n\n")
+        with open(log_path, "a") as f:
+            subprocess.Popen(cmd, cwd=str(Path.cwd()), stdout=f, stderr=subprocess.STDOUT, text=True)
         if session_logger:
-            session_logger.log("COMMAND", "Python dependency upgrade initiated", suggestion="Upgrade running in background.", metadata={"cmd": cmd, "cwd": str(repo_dir)})
-        return jsonify({"success": True, "message": "Python dependency upgrade initiated in background.", "cmd": cmd, "cwd": str(repo_dir), "mode": mode})
+            session_logger.log(
+                "COMMAND",
+                "Bridge pip upgrade initiated",
+                suggestion="Upgrade running in background. Open Log Browser → Audit report (JSON) or view the upgrade log.",
+                metadata={"cmd": cmd, "log_path": str(log_path)},
+            )
+        return jsonify(
+            {
+                "success": True,
+                "message": "Bridge pip upgrade initiated in background.",
+                "cmd": cmd,
+                "log_path": str(log_path),
+                "mode": "bridge-env",
+            }
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/server/update/<server_id>', methods=['POST'])
+def server_update_python(server_id: str):
+    """Upgrade a specific managed MCP server's Python environment (server-scoped, not global)."""
+    import yaml
+
+    try:
+        payload = request.get_json(silent=True) or {}
+        dry_run = bool(payload.get("dry_run"))
+
+        inv = pm.get_inventory()
+        servers = list(inv.get("servers") or [])
+        target = next((s for s in servers if str(s.get("id")) == str(server_id)), None)
+        if not target:
+            return jsonify({"success": False, "error": f"Server id not found: {server_id}"}), 404
+
+        server_path = Path(str(target.get("path") or "")).expanduser()
+        if not server_path:
+            return jsonify({"success": False, "error": f"Server path missing for id: {server_id}"}), 400
+
+        # Determine interpreter preference:
+        # 1) server-local venv
+        # 2) Nexus venv
+        # 3) current bridge python
+        candidates = [
+            server_path / ".venv" / "bin" / "python3",
+            server_path / "venv" / "bin" / "python3",
+            NEXUS_HOME / ".venv" / "bin" / "python3",
+            Path(sys.executable),
+        ]
+        py = next((p for p in candidates if p.exists()), Path(sys.executable))
+
+        if (server_path / "pyproject.toml").exists():
+            cmd = [str(py), "-m", "pip", "install", "--upgrade", "-e", "."]
+            mode = "pyproject"
+        elif (server_path / "requirements.txt").exists():
+            cmd = [str(py), "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"]
+            mode = "requirements"
+        else:
+            cmd = [str(py), "-m", "pip", "install", "--upgrade", "pip"]
+            mode = "pip-only"
+
+        if dry_run:
+            return jsonify(
+                {
+                    "success": True,
+                    "dry_run": True,
+                    "server_id": server_id,
+                    "server_path": str(server_path),
+                    "python": str(py),
+                    "cmd": cmd,
+                    "mode": mode,
+                }
+            )
+
+        log_root = _home() / ".mcpinv" / "upgrades"
+        log_root.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+        log_path = log_root / f"server_{server_id}_upgrade_{stamp}.log"
+        with open(log_path, "w") as f:
+            f.write("=== Nexus Server Upgrade ===\n")
+            f.write(f"server_id: {server_id}\n")
+            f.write(f"server_path: {server_path}\n")
+            f.write(f"python: {py}\n")
+            f.write(f"mode: {mode}\n")
+            f.write(f"cmd: {' '.join(shlex.quote(x) for x in cmd)}\n\n")
+
+        with open(log_path, "a") as f:
+            subprocess.Popen(cmd, cwd=str(server_path), stdout=f, stderr=subprocess.STDOUT, text=True)
+
+        if session_logger:
+            session_logger.log(
+                "COMMAND",
+                f"Server pip upgrade initiated: {server_id}",
+                suggestion="Upgrade running in background. View logs in Log Browser → lifecycle (server) or audit.",
+                metadata={"server_id": server_id, "cmd": cmd, "cwd": str(server_path), "log_path": str(log_path)},
+            )
+
+        return jsonify(
+            {
+                "success": True,
+                "message": f"Server upgrade initiated in background: {server_id}",
+                "server_id": server_id,
+                "server_path": str(server_path),
+                "python": str(py),
+                "cmd": cmd,
+                "mode": mode,
+                "log_path": str(log_path),
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/system/python_info', methods=['GET'])
 def system_python_info():

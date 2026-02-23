@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Search, Cpu, Monitor,
   HardDrive, Globe, AlertTriangle, X, Trash2,
   FileText, Library, Terminal,
-  ChevronDown, ChevronUp, CheckCircle2, Info, Copy
+  ChevronDown, ChevronUp, CheckCircle2, Info, Copy, Wrench
 } from 'lucide-react';
 
 // Types
@@ -1310,16 +1310,35 @@ const App: React.FC = () => {
                                 : (s.status === 'online' ? 'Stop' : 'Start')}
                             </button>
 
-                            {/* Lifecycle Log */}
-                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => openServerDrawer(s.id, 'log')} title="View lifecycle log">
-                              <Terminal size={18} />
-                            </button>
+	                            {/* Lifecycle Log */}
+	                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => openServerDrawer(s.id, 'log')} title="View lifecycle log">
+	                              <Terminal size={18} />
+	                            </button>
 
-                            {/* Audit Report */}
-                            <button
-                              className="nav-item"
-                              style={{ padding: '8px' }}
-                              onClick={() => openServerDrawer(s.id, 'report')}
+	                            {/* Per-server upgrade (server-scoped, not global) */}
+	                            {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager'].includes(s.id) ? (
+	                              <button
+	                                className="nav-item"
+	                                style={{ padding: '8px' }}
+	                                onClick={async () => {
+	                                  addNotification(`Upgrading ${s.name}…`, 'info');
+	                                  try {
+	                                    const res = await fetch(API_BASE + `/server/update/${encodeURIComponent(s.id)}`, { method: 'POST' });
+	                                    const d = await res.json().catch(() => ({}));
+	                                    addNotification(d.message || d.error || 'Upgrade started.', res.ok && d.success ? 'success' : 'error');
+	                                  } catch (e) { addNotification(String(e), 'error'); }
+	                                }}
+	                                title="Upgrade this server’s Python deps (server-scoped)"
+	                              >
+	                                <Wrench size={18} />
+	                              </button>
+	                            ) : null}
+
+	                            {/* Audit Report */}
+	                            <button
+	                              className="nav-item"
+	                              style={{ padding: '8px' }}
+	                              onClick={() => openServerDrawer(s.id, 'report')}
                               title="Open audit report"
                             >
                               <FileText size={18} />
@@ -2270,22 +2289,22 @@ const App: React.FC = () => {
                     </button>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
-                    <div>
-                      <h4 style={{ margin: 0, fontSize: '15px' }}>Python Environment</h4>
-                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-dim)' }}>Pip dependencies and runtime libs</p>
-                    </div>
-                    <button className="nav-item" style={{ borderColor: '#eab308', color: '#eab308' }} onClick={async () => {
-                      addNotification("Upgrading Python packages...", "info");
-                      try {
-                        const res = await fetch(API_BASE + '/system/update/python', { method: 'POST' });
-                        const d = await res.json();
-                        addNotification(d.message || d.error, d.success ? "success" : "error");
-                      } catch (e) { addNotification(String(e), 'error'); }
-                    }}>
-                      Upgrade Pip Deps
-                    </button>
-                  </div>
+	                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+	                    <div>
+	                      <h4 style={{ margin: 0, fontSize: '15px' }}>Python Environment</h4>
+	                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-dim)' }}>Bridge pip (this running Nexus bridge only)</p>
+	                    </div>
+	                    <button className="nav-item" style={{ borderColor: '#eab308', color: '#eab308' }} onClick={async () => {
+	                      addNotification("Upgrading bridge pip...", "info");
+	                      try {
+	                        const res = await fetch(API_BASE + '/system/update/python', { method: 'POST' });
+	                        const d = await res.json();
+	                        addNotification(d.message || d.error, d.success ? "success" : "error");
+	                      } catch (e) { addNotification(String(e), 'error'); }
+	                    }}>
+	                      Upgrade Bridge Pip
+	                    </button>
+	                  </div>
 
                   {pythonInfo && (
                     <div className="glass-card" style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>

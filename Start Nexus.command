@@ -35,6 +35,67 @@ echo "📦 Look for the Indigo dot in your menu bar."
 echo "------------------------------------------------"
 echo "✅ Launching background process. You can close this window."
 
+# If port 5001 is already in use by a previous Nexus instance, stop it before relaunch.
+# If it's not Nexus, refuse (don’t kill random services).
+python3 - <<'PY'
+import os, socket, subprocess, time
+from pathlib import Path
+
+port = int(os.environ.get("NEXUS_PORT","5001"))
+host = os.environ.get("NEXUS_BIND","127.0.0.1")
+
+def listening()->bool:
+    s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.2)
+    try:
+        return s.connect_ex((host, port))==0
+    finally:
+        s.close()
+
+if not listening():
+    raise SystemExit(0)
+
+pid_file = Path.home()/".mcpinv"/"nexus.pid"
+pid = None
+try:
+    if pid_file.exists():
+        pid = pid_file.read_text().strip().splitlines()[0].strip()
+except Exception:
+    pid = None
+
+def cmdline(pid: str) -> str:
+    try:
+        return subprocess.check_output(["ps","-p",pid,"-o","command="], text=True).strip()
+    except Exception:
+        return ""
+
+if pid:
+    cmd = cmdline(pid)
+    if ("nexus_tray.py" in cmd) or ("gui_bridge.py" in cmd):
+        try:
+            os.kill(int(pid), 15)
+        except Exception:
+            pass
+        time.sleep(0.4)
+        if listening():
+            try:
+                os.kill(int(pid), 9)
+            except Exception:
+                pass
+            time.sleep(0.2)
+
+if listening():
+    raise SystemExit(2)
+raise SystemExit(0)
+PY
+RC=$?
+if [ "$RC" -ne 0 ]; then
+  echo "❌ Cannot launch Nexus because port 5001 is in use by a non-Nexus process."
+  echo "💡 Fix: close the other app using port 5001, then try again."
+  read -p "Press Enter to close..."
+  exit 1
+fi
+
 # Run in background, ignoring HUP signal so it survives terminal closure
 mkdir -p "$HOME/.mcpinv"
 nohup python3 nexus_tray.py > "$HOME/.mcpinv/nexus.log" 2>&1 &

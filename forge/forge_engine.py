@@ -194,11 +194,11 @@ def handle_request(request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             name = (params.get("name") or "").strip()
             if name == "ping":
                 return _ok(msg_id, {{"ok": True, "ts": time.time(), "server": SERVER_NAME}})
-            return _err(msg_id, -32601, f"Unknown tool: {name}")
+            return _err(msg_id, -32601, f"Unknown tool: {{name}}")
 
-        return _err(msg_id, -32601, f"Unknown method: {method}")
+        return _err(msg_id, -32601, f"Unknown method: {{method}}")
     except Exception as e:
-        return _err(msg_id, -32000, f"Server error: {e}")
+        return _err(msg_id, -32000, f"Server error: {{e}}")
 
 
 def main() -> None:
