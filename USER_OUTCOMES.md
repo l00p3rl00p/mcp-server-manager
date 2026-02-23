@@ -89,7 +89,7 @@ To fully align with these outcomes, the following enhancements are planned:
 
 * **Success**: `.librarian/manifest.json` correctly lists all artifacts, and `verify.py` reports `[VERIFIED]` for all items.
 * **Failure**: Encountering an interactive prompt in `--headless` mode.
-* **Success**: Running `uninstall.py` removes the `# Shesha Block` from `.zshrc` without deleting other aliases.
+* **Success**: Running `uninstall.py` removes the `# Nexus Block` from `.zshrc` without deleting other aliases (legacy installs may still contain `# Shesha Block`).
 
 ---
 

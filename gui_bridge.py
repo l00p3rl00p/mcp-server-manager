@@ -1557,53 +1557,52 @@ def nexus_help():
 @app.route('/system/update/python', methods=['POST'])
 def system_update_python():
     """
-    Upgrade the *bridge* Python environment (the interpreter running this server).
+    Upgrade Python dependencies for the active project (developer workspace).
 
-    NOTE: MCP servers generally have their own environments; use `/server/update/<id>`
-    to upgrade a specific managed server.
+    This is a system-level action used by the GUI "Doctor"/maintenance flow. It is scoped
+    to the current project directory and does not modify other unrelated environments.
     """
     try:
         payload = request.get_json(silent=True) or {}
         dry_run = bool(payload.get("dry_run"))
-        bridge_python = sys.executable
-        cmd = [bridge_python, "-m", "pip", "install", "--upgrade", "pip"]
+        repo = Path.cwd()
+        py = sys.executable
+
+        if (repo / "pyproject.toml").exists():
+            cmd = [py, "-m", "pip", "install", "--upgrade", "-e", "."]
+            mode = "pyproject"
+        elif (repo / "requirements.txt").exists():
+            cmd = [py, "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"]
+            mode = "requirements"
+        else:
+            cmd = [py, "-m", "pip", "install", "--upgrade", "pip"]
+            mode = "pip-only"
 
         if dry_run:
-            return jsonify({
-                "success": True,
-                "dry_run": True,
-                "cmd": cmd,
-                "cwd": None,
-                "mode": "bridge-env",
-                "note": "Upgrades pip for the running bridge interpreter.",
-            })
+            return jsonify({"success": True, "dry_run": True, "cmd": cmd, "cwd": str(repo), "mode": mode})
 
-        log_root = _home() / ".mcpinv" / "upgrades"
+        # Write logs under app_data_dir to keep side-effects inside the Nexus-managed state
+        # (and keep tests/sandboxing deterministic).
+        log_root = pm.app_data_dir / "upgrades"
         log_root.mkdir(parents=True, exist_ok=True)
         stamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
-        log_path = log_root / f"bridge_pip_upgrade_{stamp}.log"
+        log_path = log_root / f"system_python_update_{stamp}.log"
         with open(log_path, "w") as f:
-            f.write("=== Nexus Bridge Pip Upgrade ===\n")
-            f.write(f"python: {bridge_python}\n")
+            f.write("=== Nexus System Python Update ===\n")
+            f.write(f"repo: {repo}\n")
+            f.write(f"python: {py}\n")
+            f.write(f"mode: {mode}\n")
             f.write(f"cmd: {' '.join(shlex.quote(x) for x in cmd)}\n\n")
         with open(log_path, "a") as f:
-            subprocess.Popen(cmd, cwd=str(Path.cwd()), stdout=f, stderr=subprocess.STDOUT, text=True)
+            subprocess.Popen(cmd, cwd=str(repo), stdout=f, stderr=subprocess.STDOUT, text=True)
         if session_logger:
             session_logger.log(
                 "COMMAND",
-                "Bridge pip upgrade initiated",
-                suggestion="Upgrade running in background. Open Log Browser → Audit report (JSON) or view the upgrade log.",
-                metadata={"cmd": cmd, "log_path": str(log_path)},
+                "System python update initiated",
+                suggestion="Upgrade running in background. Open Log Browser to view the update log.",
+                metadata={"cmd": cmd, "cwd": str(repo), "mode": mode, "log_path": str(log_path)},
             )
-        return jsonify(
-            {
-                "success": True,
-                "message": "Bridge pip upgrade initiated in background.",
-                "cmd": cmd,
-                "log_path": str(log_path),
-                "mode": "bridge-env",
-            }
-        )
+        return jsonify({"success": True, "message": "System python update initiated in background.", "cmd": cmd, "cwd": str(repo), "mode": mode, "log_path": str(log_path)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

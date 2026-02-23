@@ -71,7 +71,7 @@ The Activator features a multi-layer safety suite to ensure executables "Just Wo
 
 The `uninstall.py` tool uses the **Nexus Manifest Layer** to ensure zero-residue cleanup:
 *   **Artifact Removal**: Only files listed in `manifest.json` are deleted.
-*   **PATH Cleaning**: Uses `# Shesha Block` markers to surgically extract shell configuration edits.
+*   **PATH Cleaning**: Uses `# Nexus Block` markers for safe reversal (legacy installs may still contain `# Shesha Block`).
 *   **Nexus Protection**: Refuses to delete the `~/.mcp-tools` home unless it is completely empty or the `--force` flag is used.
 
 ---

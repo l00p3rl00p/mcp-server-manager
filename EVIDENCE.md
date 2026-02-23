@@ -63,11 +63,17 @@ $ cat ~/.config/aistudio/mcp_servers.json
     "nexus-librarian": {
       "command": "/Users/almowplay/.mcp-tools/bin/mcp-librarian",
       "args": ["--server"],
-      "_shesha_managed": true
+      "_nexus_managed": {
+        "managed": true,
+        "suite": "workforce-nexus",
+        "tool": "mcp-injector"
+      }
     }
   }
 }
 ```
+
+Note: legacy metadata keys like `_shesha_managed` are stripped when configs are rewritten.
 
 **Verification Date**: 2026-02-17  
 **Status**: ✅ COMPLETE - All units delivered and interconnected
