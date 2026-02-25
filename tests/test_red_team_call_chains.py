@@ -123,16 +123,19 @@ class TestRedTeamCallChains(unittest.TestCase):
         repo.mkdir(parents=True, exist_ok=True)
         (repo / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
 
+        # Mock NEXUS_HOME to be empty so it falls back to sys.executable for the test,
+        # OR mock the exact executable we expect.
         with patch.object(gb.Path, "cwd", return_value=repo), patch.object(
             gb.subprocess, "Popen"
-        ) as popen_mock:
+        ) as popen_mock, patch("gui_bridge.NEXUS_HOME", Path("/fake/nexus")):
             res = self.client.post("/system/update/python", json={"dry_run": True})
 
         self.assertEqual(res.status_code, 200)
         payload = res.get_json()
         self.assertTrue(payload.get("success"))
         self.assertTrue(payload.get("dry_run"))
-        self.assertEqual(payload.get("cmd"), [gb.sys.executable, "-m", "pip", "install", "--upgrade", "-e", "."])
+        # Should fallback to sys.executable because /fake/nexus/.venv does not exist
+        self.assertEqual(payload.get("cmd"), [sys.executable, "-m", "pip", "install", "--upgrade", "-e", "."])
         self.assertEqual(Path(payload.get("cwd")).resolve(), repo.resolve())
         self.assertEqual(payload.get("mode"), "pyproject")
         popen_mock.assert_not_called()
@@ -145,14 +148,14 @@ class TestRedTeamCallChains(unittest.TestCase):
 
         with patch.object(gb.Path, "cwd", return_value=repo), patch.object(
             gb.subprocess, "Popen"
-        ) as popen_mock:
+        ) as popen_mock, patch("gui_bridge.NEXUS_HOME", Path("/fake/nexus")):
             res = self.client.post("/system/update/python", json={"dry_run": True})
 
         self.assertEqual(res.status_code, 200)
         payload = res.get_json()
         self.assertTrue(payload.get("success"))
         self.assertTrue(payload.get("dry_run"))
-        self.assertEqual(payload.get("cmd"), [gb.sys.executable, "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"])
+        self.assertEqual(payload.get("cmd"), [sys.executable, "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"])
         self.assertEqual(Path(payload.get("cwd")).resolve(), repo.resolve())
         self.assertEqual(payload.get("mode"), "requirements")
         popen_mock.assert_not_called()

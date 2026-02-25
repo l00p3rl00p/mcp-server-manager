@@ -1565,13 +1565,35 @@ def system_update_python():
     try:
         payload = request.get_json(silent=True) or {}
         dry_run = bool(payload.get("dry_run"))
-        # Always use the nexus venv python, not sys.executable (bridge may run under stale python).
-        nexus_venv_py = get_global_config_path().parent / ".venv" / "bin" / "python3"
-        if not nexus_venv_py.exists():
-            nexus_venv_py = Path.home() / ".mcp-tools" / ".venv" / "bin" / "python3"
-        py = str(nexus_venv_py) if nexus_venv_py.exists() else sys.executable
+
+        # Support server-specific path/id in the system route, or default to Nexus venv.
+        server_id = payload.get("server_id")
+        repo_path = payload.get("path")
 
         repo = Path.cwd()
+        if repo_path:
+            repo = Path(repo_path).expanduser().resolve()
+        elif server_id:
+            inv = pm.get_inventory()
+            target = next((s for s in inv.get("servers", []) if str(s.get("id")) == str(server_id)), None)
+            if target and target.get("path"):
+                repo = Path(target["path"]).expanduser().resolve()
+        elif pm.active_project and pm.active_project.get("path"):
+            repo = Path(pm.active_project["path"]).expanduser().resolve()
+
+        # Always prefer a per-server venv if this is a server-scoped call,
+        # otherwise use the central Nexus venv.
+        candidates = []
+        if repo != Path.cwd():
+            candidates.extend([
+                repo / ".venv" / "bin" / "python3",
+                repo / "venv" / "bin" / "python3",
+            ])
+        candidates.append(NEXUS_HOME / ".venv" / "bin" / "python3")
+
+        py_path = next((p for p in candidates if p.exists()), Path(sys.executable))
+        py = str(py_path)
+
         if (repo / "pyproject.toml").exists():
             cmd = [py, "-m", "pip", "install", "--upgrade", "-e", "."]
             mode = "pyproject"
@@ -1665,7 +1687,7 @@ def server_update_python(server_id: str):
                 }
             )
 
-        log_root = _home() / ".mcpinv" / "upgrades"
+        log_root = MCPINV_HOME / "upgrades"
         log_root.mkdir(parents=True, exist_ok=True)
         stamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         log_path = log_root / f"server_{server_id}_upgrade_{stamp}.log"

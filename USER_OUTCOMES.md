@@ -1,11 +1,24 @@
-# User Outcomes - Git Repo MCP Converter & Installer
+# User Outcomes - Nexus Observer & Forge (mcp-server-manager)
 
-This document defines what success looks like for the "Clean Room Installer" and ensures the technical path aligns with the mission of friction-less replication.
+This document defines success for the **Nexus Observer**, the visual control surface for the ecosystem, and the **Forge**, the engine for logic hardening and server transformation.
 
 ---
 
-## ⚡ Quick Summary
-* **Mission Statement**: To provide a "Just Works" installation experience that creates zero-leak, isolated environments allowing agents to replicate the packager stack without friction.
+## 🔗 Canonical Outcomes & Mission (Project Scope)
+
+This repo-level `USER_OUTCOMES.md` is subordinate to the canonical [Workforce Nexus Mission Statement](/Users/almowplay/Developer/Github/mcp-creater-manager/USER_OUTCOMES.md).
+
+## Core Mission Statement - READ ONLY- NEVER EDIT
+
+The mission is to provide a unified visual command center for the entire MCP ecosystem, enabling real-time telemetry, lifecycle management, and the rapid transformation of arbitrary codebases into production-ready MCP servers via the Forge engine. It eliminates terminal dependency and manual boilerplate, guaranteeing a premium, observable, and highly efficient server environment.
+
+### The Rule of Ones: The COMMANDER System Architecture
+The Nexus Observer & Forge act as the central nervous system and factory of the suite, anchored in:
+- **One Install Path:** Served as the primary OS-integrated GUI surface within the Unified Nexus.
+- **One Entry Point:** The "Nexus Commander" dashboard and the OS System Tray (Indigo Dot).
+- **One Status:** A unified, real-time health dashboard for all local and remote MCP servers.
+- **One Log:** Centralized observability for the dashboard backend, the Forge engine, and server lifecycle events.
+
 
 ---
 
@@ -16,14 +29,27 @@ This document defines what success looks like for the "Clean Room Installer" and
 
 ---
 
-## 🔍 Successful Outcomes
+## 🔍 Successful Outcomes (Nexus Observer & Forge)
 
 As a user, I want:
 
-### 1. Portability & Isolation
-* **Standalone Execution**: The `/serverinstaller` directory can be copied to any repo and execute correctly without external dependencies.
-* **Environment Integrity**: The installer bootstraps from the host's existing tools and create isolated environments (e.g., `.venv`) to prevent leaks.
-* **Zero-Touch Replication**: A real agent can execute `install.py --headless` and achieve a functional stack without human intervention.
+### 1. Unified Visual Control (The Observer)
+* **Real-Time Telemetry**: See CPU, memory, and process health for every managed MCP server in a single, responsive dashboard.
+* **Token Auditing**: View the "Token Weight" and cost-efficiency metrics of my agent interactions to optimize my tool usage.
+* **System Tray Persistence**: The Observer runs as an OS-native tray app (Indigo Dot), allowing the dashboard to remain active even if the terminal is closed.
+
+### 2. Rapid Logic Hardening (The Forge)
+* **One-Click Server Creation**: Transform any local directory containing Python or Node scripts into a fully functional MCP server using the "Forge" interface.
+* **ATP-Compliance Injection**: Automatically wrap forged servers with ATP security layers, including AST-based sandboxing and `noclobber` shell protections.
+* **Zero-Knowledge Deployment**: Build and deploy a new server without writing a single line of boilerplate JSON or manifest code.
+
+### 3. Deep Observability
+* **Live Log Streaming**: View the standard output and error streams of any server directly in the GUI to debug integration issues in real-time.
+* **Contextual Audit Reports**: Click a single button on any server card to get a full security and performance audit of that specific component.
+
+### 4. Zero-Friction Maintenance
+* **One-Click Injection**: Inject forged servers into IDEs (Claude, Cursor) directly from the dashboard card via the integrated Surgeon (mcp-injector) link.
+* **Automated Sync Feedback**: Visually detect when local server code has drifted from the managed mirror and require a `--sync`.
 
 ### 2. Intelligent Discovery & Autonomy
 * **Autonomous Bootstrap**: The Activator can fetch the entire Workforce Nexus suite from GitHub, allowing it to move from "standalone script" to "suite architect" without local source siblings.
