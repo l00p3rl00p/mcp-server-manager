@@ -1565,9 +1565,13 @@ def system_update_python():
     try:
         payload = request.get_json(silent=True) or {}
         dry_run = bool(payload.get("dry_run"))
-        repo = Path.cwd()
-        py = sys.executable
+        # Always use the nexus venv python, not sys.executable (bridge may run under stale python).
+        nexus_venv_py = get_global_config_path().parent / ".venv" / "bin" / "python3"
+        if not nexus_venv_py.exists():
+            nexus_venv_py = Path.home() / ".mcp-tools" / ".venv" / "bin" / "python3"
+        py = str(nexus_venv_py) if nexus_venv_py.exists() else sys.executable
 
+        repo = Path.cwd()
         if (repo / "pyproject.toml").exists():
             cmd = [py, "-m", "pip", "install", "--upgrade", "-e", "."]
             mode = "pyproject"
