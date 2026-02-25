@@ -1,13 +1,1 @@
-servers:
-- id: webmcp_forged
-  name: webmcp_forged
-  path: /Users/almowplay/Developer/Github/mcp-creater-manager/forged_servers/webmcp_forged
-  run:
-    start_cmd: /Library/Developer/CommandLineTools/usr/bin/python3 mcp_server.py
-    stop_cmd: pkill -f mcp_server.py
-  source: https://github.com/webmachinelearning/webmcp.git
-  status: ready
-  tags:
-  - forged
-  - nexus-v3
-  type: forged
+servers: []
