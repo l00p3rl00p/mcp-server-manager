@@ -214,7 +214,11 @@ class ProjectManager:
                     subprocess.Popen([str(librarian_bin), "--server"], start_new_session=True, env=os.environ.copy())
                 else:
                     if session_logger:
-                        session_logger.log("ERROR", "Core Service Missing: mcp-librarian binary not found.")
+                        session_logger.log(
+                            "ERROR",
+                            "Core Service Missing: mcp-librarian binary not found.",
+                            suggestion="Run 'mcp-activator --repair' to rebuild the Nexus binaries.",
+                        )
         except Exception as e:
             if session_logger: session_logger.log("ERROR", f"Core Service Auto-Start Failed: {e}")
 
@@ -982,7 +986,7 @@ def validate_env():
     
     # 2. Check BIN_DIR existence
     if not pm.bin_dir.exists():
-        results.append({"domain": "Infrastructure", "status": "fatal", "msg": "Hardened binaries missing.", "fix": "mcp-activator --sync"})
+        results.append({"domain": "Infrastructure", "status": "fatal", "msg": "Hardened binaries missing.", "fix": "mcp-activator --repair"})
     
     # 3. Check writable paths
     for p in [pm.app_data_dir, pm.log_path.parent]:
@@ -1325,9 +1329,8 @@ def nexus_catalog():
             "bin": "mcp-activator",
             "description": "Installer and synchronization engine.",
             "actions": [
-                {"name": "Sync Suite",    "cmd": "--sync",   "desc": "Updates all Nexus components to match local source."},
-                {"name": "Repair Suite",  "cmd": "--repair", "desc": "Fixes missing dependencies and permissions."},
-                {"name": "Custom Run",    "cmd": "",         "desc": "Run activator with custom flags (e.g. --lite, --permanent)."}
+                {"name": "Repair Suite",  "cmd": "--repair", "desc": "Rebuilds all Nexus components from local source or GitHub."},
+                {"name": "Custom Run",    "cmd": "",          "desc": "Run activator with custom flags (e.g. --lite, --permanent)."}
             ]
         },
         {

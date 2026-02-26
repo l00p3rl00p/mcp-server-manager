@@ -1,6 +1,12 @@
 # Changelog - MCP Observer (mcp-server-manager)
 
-## [3.3.1] - 2026-02-20
+## [3.3.4] - 2026-02-25
+
+### Fixed
+- **Actionable Error Recovery**: `ensure_core_services()` now logs `suggestion: "Run 'mcp-activator --sync'"` when `mcp-librarian` binary is missing, instead of a silent `null` suggestion. GUI surfaces this as a recoverable action.
+- **Startup Order Clarity**: Documented and enforced that GUI bridge is always the last process to start; core binaries must exist before GUI initialization.
+
+
 - **Deterministic Server Start**: Added runtime selection + per-server venv setup to prevent “start lies” and missing-dependency crashes.
 - **Truthful Logs**: Start logs now include resolved command, requires-python, setup-log pointers, and exit markers.
 - **Maintenance Endpoints**: Added dry-run support and fixed python upgrade to use `pyproject.toml` editable installs.

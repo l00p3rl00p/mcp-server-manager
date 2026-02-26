@@ -454,7 +454,7 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
                     if not bootstrap.exists():
                         self.send_error(404, f"Activator bootstrap.py not found at {bootstrap}")
                         return
-                    cmd = [sys.executable, str(bootstrap), "--sync"]
+                    cmd = [sys.executable, str(bootstrap), "--repair"]
 
             else:
                 cmd = [sys.executable, "-m", "mcp_inventory.cli", command]

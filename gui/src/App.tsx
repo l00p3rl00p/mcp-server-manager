@@ -516,13 +516,13 @@ const App: React.FC = () => {
                 </button>
               </div>
 
-	              <pre style={{ flex: 1, margin: 0, padding: '16px 20px', overflow: 'auto', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11px', background: 'rgba(0,0,0,0.45)', color: '#e5e7eb', whiteSpace: 'pre-wrap' }}>
-	                {logBrowserPayload || '(no data)'}
-	              </pre>
-	            </div>
-	          )}
+              <pre style={{ flex: 1, margin: 0, padding: '16px 20px', overflow: 'auto', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11px', background: 'rgba(0,0,0,0.45)', color: '#e5e7eb', whiteSpace: 'pre-wrap' }}>
+                {logBrowserPayload || '(no data)'}
+              </pre>
+            </div>
+          )}
 
-	
+
           {selectedLogEntry && (
             <div
               className="glass-card"
@@ -555,7 +555,7 @@ const App: React.FC = () => {
                 <div style={{ fontSize: '13px', fontWeight: 600 }}>{selectedLogEntry.message}</div>
               </div>
               <pre style={{ flex: 1, margin: 0, padding: '16px 20px', overflow: 'auto', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11px', background: 'rgba(0,0,0,0.45)', color: '#e5e7eb', whiteSpace: 'pre-wrap' }}>
-{JSON.stringify(selectedLogEntry, null, 2)}
+                {JSON.stringify(selectedLogEntry, null, 2)}
               </pre>
             </div>
           )}
@@ -1045,7 +1045,7 @@ const App: React.FC = () => {
           <div className={`nav-item ${activeTab === 'librarian' ? 'active' : ''}`} onClick={() => setActiveTab('librarian')}><Library size={20} /> Librarian</div>
           <div className={`nav-item ${activeTab === 'operations' ? 'active' : ''}`} onClick={() => setActiveTab('operations')} style={{ position: 'relative' }}>
             <Activity size={20} /> Operations
-            
+
           </div>
           <div className={`nav-item ${activeTab === 'terminal' ? 'active' : ''}`} onClick={() => setActiveTab('terminal')}><Terminal size={20} /> Command Log</div>
           <div className={`nav-item ${activeTab === 'forge' ? 'active' : ''}`} onClick={() => setActiveTab('forge')}><Cpu size={20} /> Forge Engine</div>
@@ -1078,17 +1078,17 @@ const App: React.FC = () => {
             <div style={{ display: 'flex', gap: '12px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
                 <div style={{ fontSize: '10px', letterSpacing: '0.5px', textTransform: 'uppercase', opacity: 0.6 }}>Active project</div>
-              <select className="glass-card" style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', cursor: 'pointer' }} value={systemStatus?.active_project?.id} onChange={e => {
-                const p = projects.find(x => x.id === e.target.value);
-                if (p) {
-                  fetch(API_BASE + '/nexus/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, path: p.path }) }).then(() => {
-                    addNotification(`Switched to project: ${p.id}`, 'info');
-                    fetchData();
-                  });
-                }
-              }}>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+                <select className="glass-card" style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', cursor: 'pointer' }} value={systemStatus?.active_project?.id} onChange={e => {
+                  const p = projects.find(x => x.id === e.target.value);
+                  if (p) {
+                    fetch(API_BASE + '/nexus/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id, path: p.path }) }).then(() => {
+                      addNotification(`Switched to project: ${p.id}`, 'info');
+                      fetchData();
+                    });
+                  }
+                }}>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
               </div>
             </div>
           </header>
@@ -1234,9 +1234,9 @@ const App: React.FC = () => {
                             <div style={{ wordBreak: 'break-all', display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0 }}>
                               <div style={{ minWidth: 0 }}>
                                 <b style={{ fontSize: '16px' }}>{s.name}</b>
-                              <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '4px' }}>TYPE: {(s.type || 'server').toUpperCase()}</div>
-                              <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '2px', opacity: 0.7 }}>{s.raw?.path || s.id}</div>
-                            </div>
+                                <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '4px' }}>TYPE: {(s.type || 'server').toUpperCase()}</div>
+                                <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '2px', opacity: 0.7 }}>{s.raw?.path || s.id}</div>
+                              </div>
                               {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager'].includes(s.id) && (
                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '2px', flexShrink: 0 }}>
                                   <button
@@ -1310,35 +1310,35 @@ const App: React.FC = () => {
                                 : (s.status === 'online' ? 'Stop' : 'Start')}
                             </button>
 
-	                            {/* Lifecycle Log */}
-	                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => openServerDrawer(s.id, 'log')} title="View lifecycle log">
-	                              <Terminal size={18} />
-	                            </button>
+                            {/* Lifecycle Log */}
+                            <button className="nav-item" style={{ padding: '8px' }} onClick={() => openServerDrawer(s.id, 'log')} title="View lifecycle log">
+                              <Terminal size={18} />
+                            </button>
 
-	                            {/* Per-server upgrade (server-scoped, not global) */}
-	                            {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager'].includes(s.id) ? (
-	                              <button
-	                                className="nav-item"
-	                                style={{ padding: '8px' }}
-	                                onClick={async () => {
-	                                  addNotification(`Upgrading ${s.name}…`, 'info');
-	                                  try {
-	                                    const res = await fetch(API_BASE + `/server/update/${encodeURIComponent(s.id)}`, { method: 'POST' });
-	                                    const d = await res.json().catch(() => ({}));
-	                                    addNotification(d.message || d.error || 'Upgrade started.', res.ok && d.success ? 'success' : 'error');
-	                                  } catch (e) { addNotification(String(e), 'error'); }
-	                                }}
-	                                title="Upgrade this server’s Python deps (server-scoped)"
-	                              >
-	                                <Wrench size={18} />
-	                              </button>
-	                            ) : null}
+                            {/* Per-server upgrade (server-scoped, not global) */}
+                            {!['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager'].includes(s.id) ? (
+                              <button
+                                className="nav-item"
+                                style={{ padding: '8px' }}
+                                onClick={async () => {
+                                  addNotification(`Upgrading ${s.name}…`, 'info');
+                                  try {
+                                    const res = await fetch(API_BASE + `/server/update/${encodeURIComponent(s.id)}`, { method: 'POST' });
+                                    const d = await res.json().catch(() => ({}));
+                                    addNotification(d.message || d.error || 'Upgrade started.', res.ok && d.success ? 'success' : 'error');
+                                  } catch (e) { addNotification(String(e), 'error'); }
+                                }}
+                                title="Upgrade this server’s Python deps (server-scoped)"
+                              >
+                                <Wrench size={18} />
+                              </button>
+                            ) : null}
 
-	                            {/* Audit Report */}
-	                            <button
-	                              className="nav-item"
-	                              style={{ padding: '8px' }}
-	                              onClick={() => openServerDrawer(s.id, 'report')}
+                            {/* Audit Report */}
+                            <button
+                              className="nav-item"
+                              style={{ padding: '8px' }}
+                              onClick={() => openServerDrawer(s.id, 'report')}
                               title="Open audit report"
                             >
                               <FileText size={18} />
@@ -1348,11 +1348,11 @@ const App: React.FC = () => {
                               <Search size={18} />
                             </button>
 
-                              {['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager'].includes(s.id) ? (
-                                <button className="nav-item" style={{ padding: '8px', opacity: 0.3, cursor: 'not-allowed' }} title="Core — Lifecycle only">
-                                  <ShieldCheck size={18} />
-                                </button>
-                              ) : null}
+                            {['mcp-injector', 'mcp-server-manager', 'repo-mcp-packager'].includes(s.id) ? (
+                              <button className="nav-item" style={{ padding: '8px', opacity: 0.3, cursor: 'not-allowed' }} title="Core — Lifecycle only">
+                                <ShieldCheck size={18} />
+                              </button>
+                            ) : null}
                           </div>
 
                           {/* Inline drawers (Accordion) */}
@@ -1824,20 +1824,20 @@ const App: React.FC = () => {
                           <Copy size={12} />
                         </button>
                       </div>
-	                      {log.metadata?.raw_result && (
-	                        <button
-	                          className="nav-item"
-	                          style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.7, padding: '6px 8px', fontSize: '11px' }}
-	                          onClick={(e) => {
-	                            e.stopPropagation();
-	                            setExpandedLog(prev => (prev === i ? null : i));
-	                          }}
-	                          title="Toggle raw output"
-	                        >
-	                          <small style={{ fontSize: '10px' }}>{expandedLog === i ? 'HIDE' : 'VIEW'} OUTPUT</small>
-	                          {expandedLog === i ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-	                        </button>
-	                      )}
+                      {log.metadata?.raw_result && (
+                        <button
+                          className="nav-item"
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.7, padding: '6px 8px', fontSize: '11px' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedLog(prev => (prev === i ? null : i));
+                          }}
+                          title="Toggle raw output"
+                        >
+                          <small style={{ fontSize: '10px' }}>{expandedLog === i ? 'HIDE' : 'VIEW'} OUTPUT</small>
+                          {expandedLog === i ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      )}
                     </div>
                     {expandedLog === i && log.metadata?.raw_result && (
                       <div style={{ marginTop: '12px', animation: 'slideIn 0.2s ease-out' }}>
@@ -2289,22 +2289,22 @@ const App: React.FC = () => {
                     </button>
                   </div>
 
-	                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
-	                    <div>
-	                      <h4 style={{ margin: 0, fontSize: '15px' }}>Python Environment</h4>
-	                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-dim)' }}>Bridge pip (this running Nexus bridge only)</p>
-	                    </div>
-	                    <button className="nav-item" style={{ borderColor: '#eab308', color: '#eab308' }} onClick={async () => {
-	                      addNotification("Upgrading bridge pip...", "info");
-	                      try {
-	                        const res = await fetch(API_BASE + '/system/update/python', { method: 'POST' });
-	                        const d = await res.json();
-	                        addNotification(d.message || d.error, d.success ? "success" : "error");
-	                      } catch (e) { addNotification(String(e), 'error'); }
-	                    }}>
-	                      Upgrade Bridge Pip
-	                    </button>
-	                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '15px' }}>Python Environment</h4>
+                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-dim)' }}>Nexus Commander Python environment (this running process only)</p>
+                    </div>
+                    <button className="nav-item" style={{ borderColor: '#eab308', color: '#eab308' }} onClick={async () => {
+                      addNotification("Upgrading Nexus Commander pip...", "info");
+                      try {
+                        const res = await fetch(API_BASE + '/system/update/python', { method: 'POST' });
+                        const d = await res.json();
+                        addNotification(d.message || d.error, d.success ? "success" : "error");
+                      } catch (e) { addNotification(String(e), 'error'); }
+                    }}>
+                      Upgrade Nexus Commander Pip
+                    </button>
+                  </div>
 
                   {pythonInfo && (
                     <div className="glass-card" style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
@@ -2312,7 +2312,7 @@ const App: React.FC = () => {
                         <div>
                           <h4 style={{ margin: 0, fontSize: '13px', opacity: 0.9 }}>Runtime Visibility</h4>
                           <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'var(--text-dim)' }}>
-                            Bridge Python: <code>{pythonInfo.bridge?.python_version || 'unknown'}</code>
+                            Commander Python: <code>{pythonInfo.bridge?.python_version || 'unknown'}</code>
                           </p>
                         </div>
                         <button className="nav-item" style={{ padding: '6px 10px' }} onClick={() => fetchData()}>Refresh</button>
@@ -2324,7 +2324,7 @@ const App: React.FC = () => {
                           <code style={{ fontSize: '10px' }}>{pythonInfo.bridge?.python || ''}</code>
                         </div>
                         <div style={{ fontSize: '11px' }}>
-                          <div style={{ opacity: 0.7, marginBottom: '4px' }}>Bridge Pip</div>
+                          <div style={{ opacity: 0.7, marginBottom: '4px' }}>Commander Pip</div>
                           <code style={{ fontSize: '10px' }}>{pythonInfo.bridge?.pip_version || ''}</code>
                         </div>
                         <div style={{ fontSize: '11px' }}>

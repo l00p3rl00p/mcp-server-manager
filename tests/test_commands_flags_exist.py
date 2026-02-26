@@ -32,7 +32,7 @@ class CommandsFlagsExistTests(unittest.TestCase):
         result = subprocess.run(["python3", str(packager), "--help"], cwd=packager.parent, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         out = result.stdout + result.stderr
-        for flag in ("--lite", "--industrial", "--permanent", "--sync", "--update", "--gui"):
+        for flag in ("--lite", "--industrial", "--permanent", "--repair", "--gui"):
             self.assertIn(flag, out)
 
 
