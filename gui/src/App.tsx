@@ -83,6 +83,8 @@ const App: React.FC = () => {
   const [logBrowserServerId, setLogBrowserServerId] = useState<string>('');
   const [logBrowserPayload, setLogBrowserPayload] = useState<string>('');
   const [coreDrawerKey, setCoreDrawerKey] = useState<string | null>(null);
+  // GAP-R2 FIX: Drift detection — tracks source vs mirror hash divergence
+  const [driftReport, setDriftReport] = useState<{ any_drift: boolean; repair_command: string; repos: any[] } | null>(null);
   const [inventoryView, setInventoryView] = useState<'card' | 'list'>(() => {
     return (localStorage.getItem('nexus_inventory_view') as 'card' | 'list') || 'card';
   });
@@ -275,7 +277,8 @@ const App: React.FC = () => {
         ['project/history', setInventoryHistory],
         ['nexus/catalog', setCommandCatalog],
         ['forge/last', (d) => d && Object.keys(d).length > 0 && setForgeResult({ ...d, status: 'completed' })],
-        ['system/python_info', (d) => d && d.success && setPythonInfo(d)]
+        ['system/python_info', (d) => d && d.success && setPythonInfo(d)],
+        ['system/drift', (d) => d && setDriftReport(d)]
       ];
 
       await Promise.all(endpoints.map(async ([path, setter]) => {
@@ -295,6 +298,19 @@ const App: React.FC = () => {
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Drift detection: poll every 60s (slower — file hashing is cheap but no need to hammer)
+  useEffect(() => {
+    const driftPoll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/system/drift`);
+        if (res.ok) { const d = await res.json(); setDriftReport(d); }
+      } catch { }
+    };
+    driftPoll();
+    const interval = setInterval(driftPoll, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -455,6 +471,27 @@ const App: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* GAP-R2 FIX: Drift Detection Banner — shows when workspace diverges from managed mirror */}
+      {driftReport?.any_drift && (
+        <div id="drift-banner" style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 900,
+          background: 'linear-gradient(90deg, rgba(245,158,11,0.92), rgba(217,119,6,0.92))',
+          backdropFilter: 'blur(8px)', padding: '10px 24px',
+          display: 'flex', alignItems: 'center', gap: '12px', fontSize: '13px', color: '#fff',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+        }}>
+          <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+          <span style={{ fontWeight: 600 }}>⚠️ Drift Detected</span>
+          <span style={{ opacity: 0.9 }}>
+            {driftReport.repos.filter((r: any) => r.drifted).map((r: any) => r.repo).join(', ')} — workspace source differs from managed mirror (~/.mcp-tools).
+          </span>
+          <code style={{ background: 'rgba(0,0,0,0.25)', borderRadius: '4px', padding: '2px 8px', fontFamily: 'monospace', fontSize: '12px' }}>
+            {driftReport.repair_command}
+          </code>
+          <span style={{ marginLeft: 'auto', opacity: 0.7, fontSize: '11px' }}>Run repair to sync · Last checked: {new Date().toLocaleTimeString()}</span>
+        </div>
+      )}
 
       {/* Stacked side-panels (no screen dimming). */}
       {(helpContent || logViewer || selectedItem || purgeModalOpen || sideConfirm || logBrowserOpen || selectedLogEntry) && (

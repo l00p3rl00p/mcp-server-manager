@@ -1919,7 +1919,7 @@ def system_uninstall():
                 return jsonify(
                     {
                         "success": False,
-                        "error": "Uninstaller found, but it does not support requested options. Run sync/update, or use the workspace version.",
+                        "error": "Uninstaller found, but it does not support requested options. Run --repair, or use the workspace version.",
                         "candidates": [str(p) for p in candidates],
                         "requested_flags": needs,
                     }
@@ -1975,7 +1975,7 @@ def system_uninstall():
                 jsonify(
                     {
                         "success": False,
-                        "error": "Installed uninstaller is out of date and does not support the selected reset options. Run suite sync/update, then retry Preview.",
+                        "error": "Installed uninstaller is out of date and does not support the selected reset options. Run mcp-activator --repair, then retry Preview.",
                         "uninstaller": str(uninstaller),
                         "cmd": cmd,
                         "stderr": stderr,
@@ -2742,6 +2742,67 @@ def forge_status(task_id):
 def forge_last():
     """Returns the last persisted forge result."""
     return jsonify(pm.last_forge_result or {})
+
+
+@app.route('/system/drift', methods=['GET'])
+def system_drift():
+    """GAP-R2 FIX: Compare workspace source vs managed mirror (~/.mcp-tools).
+    Returns a drift report so the GUI can surface a 'Repair?' banner.
+    Each entry: {repo, workspace_hash, mirror_hash, drifted: bool}
+    """
+    import hashlib
+
+    def _file_hash(path: Path) -> str:
+        """SHA-256 of file contents; returns empty string if unreadable."""
+        try:
+            return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+        except Exception:
+            return ""
+
+    def _dir_hash(directory: Path, sentinel_files: list) -> str:
+        """Hash a representative set of sentinel files inside a directory."""
+        parts = []
+        for rel in sentinel_files:
+            p = directory / rel
+            parts.append(_file_hash(p))
+        combined = "|".join(parts)
+        return hashlib.sha256(combined.encode()).hexdigest()[:12]
+
+    # Sentinel files that best represent 'version identity' for each repo
+    REPO_SENTINELS = {
+        "repo-mcp-packager":  ["bootstrap.py", "nexus_activator.py", "pyproject.toml"],
+        "mcp-server-manager": ["gui_bridge.py", "bootstrap.py", "pyproject.toml"],
+        "mcp-link-library":   ["mcp.py", "atp_sandbox.py"],
+        "mcp-injector":       ["mcp_injector.py", "mcp_surgeon.py"],
+    }
+
+    nexus_home = Path.home() / ".mcp-tools"
+    # Workspace root is two levels up from this file's location
+    workspace_root = Path(__file__).resolve().parent.parent
+
+    results = []
+    any_drift = False
+    for repo, sentinels in REPO_SENTINELS.items():
+        ws_dir = workspace_root / repo
+        mirror_dir = nexus_home / repo
+        ws_hash = _dir_hash(ws_dir, sentinels) if ws_dir.exists() else "absent"
+        mirror_hash = _dir_hash(mirror_dir, sentinels) if mirror_dir.exists() else "absent"
+        drifted = (ws_hash != mirror_hash) and mirror_hash != "absent"
+        if drifted:
+            any_drift = True
+        results.append({
+            "repo": repo,
+            "workspace_hash": ws_hash,
+            "mirror_hash": mirror_hash,
+            "drifted": drifted,
+            "mirror_exists": mirror_dir.exists(),
+        })
+
+    return jsonify({
+        "any_drift": any_drift,
+        "repair_command": "mcp-activator --repair",
+        "repos": results,
+    })
 
 if __name__ == '__main__':
     # ── Do not run gui_bridge.py directly ──────────────────────────────────

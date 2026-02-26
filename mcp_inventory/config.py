@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import tempfile
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import List
@@ -15,12 +16,13 @@ else:
 def _resolve_app_dir() -> Path:
     """
     Resolve a writable app directory.
-    Falls back to ~/.mcpinv/mcp-server-manager when ~/.mcp-tools is not writable.
+    Falls back through several candidates, ending with a tempdir so this
+    function NEVER raises — even when run outside the managed venv.
     """
     candidates = [
         _PRIMARY_APP_DIR,
         Path.home() / ".mcpinv" / "mcp-server-manager",
-        Path.cwd() / ".mcpinv" / "mcp-server-manager",
+        Path(tempfile.gettempdir()) / "mcpinv" / "mcp-server-manager",
     ]
     for candidate in candidates:
         try:
@@ -31,7 +33,8 @@ def _resolve_app_dir() -> Path:
             return candidate
         except Exception:
             continue
-    raise PermissionError("No writable app directory for mcp-server-manager")
+    # Absolute last resort — should be unreachable since tempdir always works
+    return Path(tempfile.mkdtemp(prefix="mcpinv_"))
 
 
 APP_DIR = _resolve_app_dir()

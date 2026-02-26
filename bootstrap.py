@@ -112,7 +112,7 @@ def main() -> int:
         print("Common forwarded flags:")
         print("  --permanent / --industrial   Hardened install into ~/.mcp-tools")
         print("  --lite                       Lite install")
-        print("  --sync / --update            Sync/update suite")
+        print("  --repair                     Repair/update entire suite")
         print("  --gui                        Launch GUI after install")
         print()
         print("Forwarder-only flags:")
