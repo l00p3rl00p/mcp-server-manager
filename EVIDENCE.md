@@ -212,7 +212,7 @@ $ python3 nexus-verify.py
 
 **Contract**: [AI-SDK-PROD-BUILD-v4.md](../AI-SDK-PROD-BUILD-v4.md)
 
-- [x] **mcp-activator --sync**: Updates inventory from workspace/GitHub.
+- [x] **mcp-activator --repair**: Updates inventory from workspace/GitHub.
 - [x] **mcp-activator --repair**: Re-installs missing hardened binaries and restores venv.
 - [x] **Centralized Session Registry**: `session.jsonl` tracks actions from Activator, Observer, Injector, and Librarian.
 - [x] **GUI Timeline**: Dashboard displays chronological command history with "Plain Language" summaries. (Verified via Browser)

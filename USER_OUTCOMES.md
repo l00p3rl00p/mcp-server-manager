@@ -49,7 +49,7 @@ As a user, I want:
 
 ### 4. Zero-Friction Maintenance
 * **One-Click Injection**: Inject forged servers into IDEs (Claude, Cursor) directly from the dashboard card via the integrated Surgeon (mcp-injector) link.
-* **Automated Sync Feedback**: Visually detect when local server code has drifted from the managed mirror and require a `--sync`.
+* **Automated Repair Feedback**: Visually detect when local server code has drifted from the managed mirror and prompt a `--repair`.
 
 ### 2. Intelligent Discovery & Autonomy
 * **Autonomous Bootstrap**: The Activator can fetch the entire Workforce Nexus suite from GitHub, allowing it to move from "standalone script" to "suite architect" without local source siblings.
@@ -66,7 +66,7 @@ As a user, I want:
 
 ### 5. Resilient Lifecycle
 * **Atomic Rollback**: If an installation fails at any step, the system automatically reverts to a clean state, leaving no partial artifacts.
-* **Safe Upgrades**: The `mcp-activator --sync` command provides a unified update loop, ensuring all central tools stay synchronized with the latest security and feature patches.
+* **Safe Upgrades**: The `mcp-activator --repair` command is the single unified update loop, ensuring all central tools stay synchronized with the latest security and feature patches.
 * **Context-Locked Execution**: Entry points carry their own venv and PYTHONPATH, ensuring they work regardless of the user's active terminal environment.
 
 ### 6. Best-in-Class Tokenization & Efficiency (ATP)
@@ -83,7 +83,7 @@ To fully align with these outcomes, the following enhancements are planned:
 
 *   **GUI Reliability (Target 95%+)**: ~~Transition GUI from a blocking process to a background service with PID management.~~ **IMPLEMENTED (UAT EVIDENCE PENDING)** — System tray (`pystray`) + Desktop launcher. Flask runs as daemon thread. No terminal required.
 *   **Librarian Synergy**: Implement a dynamic watcher so the Librarian indexes changes in real-time, not just on installation.
-*   **Operational Awareness**: Add "version health" checks to the GUI dashboard to visually signal when a `--sync` is required.
+*   **Operational Awareness**: Add "version health" checks to the GUI dashboard to visually signal when a `--repair` is required.
 
 ### 2026-02-11 Alignment Update
 * **Injector Startup Detect**: Added startup detection/prompt flow for common IDE clients, including `claude`, `codex`, and `aistudio` (plus `google-antigravity` alias).
@@ -134,7 +134,7 @@ To fully align with these outcomes, the following enhancements are planned:
 * **Deep Observability**: A dedicated Logging View is required. Users must be able to view detailed, per-server `stdout/stderr` streams. A global **"Nexus System Log"** must be prominently available to debug the orchestrator itself, distinct from the ephemeral Command Hub output.
 * **Contextual Audit**: The 'Audit Report' capability must be available per-component (Server/Librarian/System) rather than a generic global action. (IMPLEMENTED — UAT EVIDENCE PENDING)
 * **Core Reliability**: The `nexus-librarian` and other Type-0 Core Dependency MUST auto-start with the GUI and auto-restart on failure. A "Stopped" CORE is a System Defect. (IMPLEMENTED — UAT EVIDENCE PENDING)
-* **Managed Mirror Policy**: The industrial runtime environment (`~/.mcp-tools`) is a **Managed Mirror**. Any local changes in the mirror are considered "drift" and will be automatically overwritten by the workspace or GitHub on a `--sync` to ensure deterministic stability. (IMPLEMENTED — UAT EVIDENCE PENDING)
+* **Managed Mirror Policy**: The industrial runtime environment (`~/.mcp-tools`) is a **Managed Mirror**. Any local changes in the mirror are considered "drift" and will be automatically overwritten by the workspace or GitHub on `--repair` to ensure deterministic stability. (IMPLEMENTED — UAT EVIDENCE PENDING)
 * **Zero-Friction Maintenance**: Common maintenance tasks (Install, Sync, Dashboard, Health) must be accessible via OS-native double-clickable scripts located at the project root. (IMPLEMENTED — UAT EVIDENCE PENDING)
 
 ---

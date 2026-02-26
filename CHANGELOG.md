@@ -3,7 +3,7 @@
 ## [3.3.4] - 2026-02-25
 
 ### Fixed
-- **Actionable Error Recovery**: `ensure_core_services()` now logs `suggestion: "Run 'mcp-activator --sync'"` when `mcp-librarian` binary is missing, instead of a silent `null` suggestion. GUI surfaces this as a recoverable action.
+- **Actionable Error Recovery**: `ensure_core_services()` now logs `suggestion: "Run 'mcp-activator --repair'"` when `mcp-librarian` binary is missing, instead of a silent `null` suggestion. GUI surfaces this as a recoverable action.
 - **Startup Order Clarity**: Documented and enforced that GUI bridge is always the last process to start; core binaries must exist before GUI initialization.
 
 
