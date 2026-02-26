@@ -791,7 +791,7 @@ def get_status():
                 pass
         return None
 
-    librarian_proc = find_process(["mcp.py", "nexus-librarian"]) if psutil else None
+    librarian_proc = find_process(["mcp.py", "nexus-librarian", "mcp-librarian"]) if psutil else None
     librarian_online = librarian_proc is not None
     core_keywords = ["mcp-injector", "mcp-server-manager", "repo-mcp-packager", "nexus-librarian"]
     core_components = pm.core_components()
