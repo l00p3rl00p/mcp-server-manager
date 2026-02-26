@@ -149,8 +149,8 @@ These outcomes have repo-wide evidence in the root `EVIDENCE.md` (not just code 
 * **ATP Tooling (`search_api`, `execute_code`, `--json`, `/llm/batch`)**: Unit 20
 
 ---
-### 2026-02-25 Mission Audit Results (v3.3.4 Red Team)
-**Mission Score: 87%** | Anchored to: *"Unified visual command center — zero terminal dependency, real-time telemetry, Forge engine."*
+### 2026-02-25 Mission Audit Results (v3.3.5 Red Team)
+**Mission Score: 90%** | Anchored to: *"Unified visual command center — zero terminal dependency, real-time telemetry, Forge engine."*
 
 | Feature | Status | Confidence |
 |---|---|---|
@@ -162,15 +162,12 @@ These outcomes have repo-wide evidence in the root `EVIDENCE.md` (not just code 
 | Live log streaming per server | ✅ | 85% |
 | Contextual audit report per server card | ✅ | 83% |
 | One-click IDE injection from dashboard | ✅ | 83% |
-| Drift detection → prompt `--repair` | 🟡 | 65% |
+| **Drift detection → prompt `--repair` (GAP-R2)** | ✅ | 90% |
 | Auto-start `nexus-librarian` on GUI launch | ✅ | 82% |
 | No center-screen modals (inline drawers only) | ✅ | 90% |
 | GUI labels: Commander (not Bridge) | ✅ | 99% |
-
-#### 🟡 GAP-R2 (Open — v48 Backlog)
-> **Claim**: "Visually detect when local server code has drifted from the managed mirror and prompt a `--repair`."
-> **Gap**: Dashboard shows `running`/`stopped` only — no source-vs-mirror version comparison. User must manually know to run `--repair`.
-> **Fix**: Add a version-hash comparison between `~/.mcp-tools/<repo>` and workspace source on each status poll. Surface a "⚠️ Drift Detected — Repair?" banner when hashes differ.
+| Observer ATP / help-crash fixed (GAP-003/4) | ✅ | 95% |
 
 ---
-*Status: v3.3.4 Audited — 2026-02-25*
+*Status: v3.3.5 RELEASED — 2026-02-25. GAP-R2 Closed.*
+

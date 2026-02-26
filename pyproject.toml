@@ -1,6 +1,6 @@
 [project]
 name = "mcp-inventory"
-version = "3.1.0"
+version = "3.3.5"
 description = "Local MCP server discovery + curated inventory (scan wide, accept strict)."
 readme = "README.md"
 requires-python = ">=3.9"
