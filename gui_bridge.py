@@ -1793,6 +1793,31 @@ def system_python_info():
         }
     )
 
+@app.route('/system/install_package', methods=['POST'])
+def system_install_package():
+    """Install a single pip package into the bridge interpreter."""
+    data = request.get_json(silent=True) or {}
+    package = (data.get("package") or "").strip()
+    ALLOWED = {"openpyxl", "pypdf", "python-docx", "pillow", "psutil", "pyyaml", "requests", "flask", "flask-cors"}
+    if not package:
+        return jsonify({"success": False, "error": "No package specified"}), 400
+    if package not in ALLOWED:
+        return jsonify({"success": False, "error": f"Package '{package}' is not in the allowed install list"}), 400
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", package, "--break-system-packages"],
+            capture_output=True, text=True, timeout=60
+        )
+        if result.returncode == 0:
+            return jsonify({"success": True, "output": result.stdout})
+        else:
+            return jsonify({"success": False, "error": result.stderr or result.stdout}), 500
+    except subprocess.TimeoutExpired:
+        return jsonify({"success": False, "error": "Install timed out"}), 500
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route('/project/rollback', methods=['POST'])
 def project_rollback():
     """Restores a previous inventory state. Sanitizes input to prevent path traversal."""

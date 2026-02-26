@@ -2376,10 +2376,48 @@ const App: React.FC = () => {
                         </div>
                       </div>
 
-                      <div style={{ marginTop: '12px', fontSize: '11px', opacity: 0.8 }}>Key Packages</div>
+                      <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', opacity: 0.8 }}>Key Packages</span>
+                        {Object.values(pythonInfo.packages || {}).some((m: any) => !m?.present) && (
+                          <span style={{ fontSize: '10px', color: '#f87171' }}>
+                            {Object.values(pythonInfo.packages || {}).filter((m: any) => !m?.present).length} missing — click to install
+                          </span>
+                        )}
+                      </div>
                       <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
-                        {Object.entries(pythonInfo.packages || {}).map(([name, meta]: any) => (
-                          <div key={name} className="glass-card" style={{ padding: '10px', background: 'rgba(0,0,0,0.25)' }}>
+                        {Object.entries(pythonInfo.packages || {}).map(([name, meta]: any) => {
+                          return (
+                          <div
+                            key={name}
+                            className="glass-card"
+                            title={meta?.present ? `${name} ${meta.version} — installed` : `${name} is not installed. Click Install to add it.`}
+                            style={{ padding: '10px', background: meta?.present ? 'rgba(0,0,0,0.25)' : 'rgba(239,68,68,0.06)', border: meta?.present ? undefined : '1px solid rgba(239,68,68,0.2)', cursor: meta?.present ? 'default' : 'pointer', transition: 'all 0.2s' }}
+                            onClick={async () => {
+                              if (meta?.present) return;
+                              if (!(window as any).__pkgState) (window as any).__pkgState = {};
+                              const setters = (window as any).__pkgSetters || {};
+                              const setter = setters[name];
+                              if (setter) setter(true);
+                              try {
+                                const res = await fetch(API_BASE + '/system/install_package', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ package: name })
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                  addNotification(`${name} installed successfully`, 'success');
+                                  fetchData();
+                                } else {
+                                  addNotification(`Install failed: ${data.error}`, 'error');
+                                }
+                              } catch(e) {
+                                addNotification(`Install failed: network error`, 'error');
+                              } finally {
+                                if (setter) setter(false);
+                              }
+                            }}
+                          >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <b style={{ fontSize: '11px' }}>{name}</b>
                               <span className={`badge ${meta?.present ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '9px' }}>
@@ -2389,8 +2427,36 @@ const App: React.FC = () => {
                             <div style={{ marginTop: '6px', fontSize: '10px', opacity: 0.85 }}>
                               {meta?.version ? <code>{meta.version}</code> : <span style={{ opacity: 0.7 }}>—</span>}
                             </div>
+                            {!meta?.present && (
+                              <button
+                                className="nav-item"
+                                style={{ marginTop: '8px', width: '100%', padding: '5px', fontSize: '10px', fontWeight: 700, borderColor: '#f87171', color: '#f87171', background: 'rgba(239,68,68,0.1)' }}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const res = await fetch(API_BASE + '/system/install_package', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ package: name })
+                                    });
+                                    const data = await res.json();
+                                    if (data.success) {
+                                      addNotification(`${name} installed!`, 'success');
+                                      fetchData();
+                                    } else {
+                                      addNotification(`Failed: ${data.error}`, 'error');
+                                    }
+                                  } catch(e) {
+                                    addNotification('Network error during install', 'error');
+                                  }
+                                }}
+                              >
+                                ↓ Install
+                              </button>
+                            )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
