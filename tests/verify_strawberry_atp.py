@@ -16,35 +16,49 @@ except ImportError as e:
 def run_strawberry_test():
     print("--- 🍓 ATP 'Strawberry' Real-Logic Test ---")
     
+    import random
+    
     # 1. Setup Sandbox
     sb = ATPSandbox()
     
-    # 2. The Deterministic Protocol (Logic instead of Chat)
-    # Goal: Count 'r' in a tricky sentence case-insensitively.
-    sentence = "The strawberry is Ripe and Ready, but are there 3 r's or 4?"
-    code = """
-text = context.get('text', '')
-target = context.get('char', 'r')
-# Real function: Case-insensitive count
-result = {
-    "char": target,
-    "count": text.lower().count(target.lower()),
-    "source": "ATP_DETERMINISTIC_LOGIC"
-}
-"""
+    # 2. Randomized Tests
+    tests = [
+        {
+            "name": "Strawberry 'r' Count",
+            "sentence": "The strawberry is Ripe and Ready, but are there 3 r's or 4?",
+            "context": {"text": "The strawberry is Ripe and Ready, but are there 3 r's or 4?", "char": "r"},
+            "code": "result = {'count': context.get('text', '').lower().count(context.get('char', 'r').lower())}",
+            "expected": 9
+        },
+        {
+            "name": "Math Evaluation",
+            "sentence": "Compute (15 * 3) + 7 - 2",
+            "context": {},
+            "code": "result = {'count': (15 * 3) + 7 - 2}",
+            "expected": 50
+        },
+        {
+            "name": "List Filtering",
+            "sentence": "Count even numbers in 1 to 10",
+            "context": {"nums": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]},
+            "code": "result = {'count': len([x for x in context['nums'] if x % 2 == 0])}",
+            "expected": 5
+        }
+    ]
+    test = random.choice(tests)
+    print(f"Executing ATP Sandbox with test: '{test['name']}' ({test['sentence']})")
     
     # 3. Execution (Simulating MCP execute_code call)
-    print(f"Executing ATP Sandbox with sentence: '{sentence}'")
-    exec_res = sb.execute(code, {"text": sentence, "char": "r"})
+    exec_res = sb.execute(test["code"], test["context"])
     
-    if exec_res["success"]:
-        res_data = exec_res["result"] # The 'result' variable from sandbox
+    if exec_res["success"] and isinstance(exec_res.get("result"), dict):
+        res_data = exec_res["result"]
         print(f"✅ Result: {json.dumps(res_data, indent=2)}")
         
-        if res_data and res_data.get("count") == 9:
-            print("✨ SUCCESS: ATP Sandbox proved deterministic precision (Librarian level).")
+        if res_data and res_data.get("count") == test["expected"]:
+            print(f"✨ SUCCESS: ATP Sandbox proved deterministic precision for {test['name']}.")
         else:
-            print(f"❌ ERROR: Count mismatch (Got {res_data['count']}, expected 9).")
+            print(f"❌ ERROR: Count mismatch (Got {res_data.get('count')}, expected {test['expected']}).")
     else:
          print(f"❌ Sandbox Error: {exec_res.get('error')}")
 
