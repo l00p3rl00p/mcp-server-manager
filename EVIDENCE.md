@@ -444,3 +444,39 @@ $ python3 /Users/almowplay/Developer/Github/mcp-creater-manager/mcp-server-manag
 
 **Verification Date**: 2026-02-19
 **Status**: ✅ COMPLETE - High-risk findings remediated.
+
+---
+
+### Unit v3.3.5-A: ATP Project-Wide Compliance ✅
+
+**Closed Gap:** GAP-003 + GAP-004
+
+- [x] **Observer `--help` No Longer Crashes**: `mcp_inventory/config.py` `_resolve_app_dir()` uses `tempfile.gettempdir()` fallback; function never raises.
+- [x] **`verify_project_atp.py` Result**: `🎉 PROJECT-WIDE ATP COMPLIANCE: [VERIFIED]` — all 4 checks green.
+- [x] **6/6 Observer smoke tests pass** — including `test_bootstrap_help` (previously failing on `--repair` string check).
+- [x] **Stale CLI refs removed**: `--sync / --update` → `--repair` in `bootstrap.py`; `gui_bridge.py` error messages updated.
+
+**Test Evidence** (Executed 2026-02-25):
+```
+--- Nexus Project-Wide ATP Verification ---
+1. [Librarian] --json Logic:  ✅
+2. [Injector]  --json flag:   ✅
+3. [Observer]  --json flag:   ✅
+4. [Bridge]    Parallel Supervisor: ✅
+🎉 PROJECT-WIDE ATP COMPLIANCE: [VERIFIED]
+Ran 6 tests in 0.669s — OK
+```
+
+**Verification Date**: 2026-02-25
+**Status**: ✅ COMPLETE
+
+---
+
+### Unit v3.3.5-B: Drift Detection (GAP-R2) ✅
+
+- [x] **`/system/drift` endpoint live** in `gui_bridge.py` — SHA-256 sentinel comparison per repo.
+- [x] **Drift banner in `App.tsx`** — `driftReport` state, 60 s polling, amber inline banner with `mcp-activator --repair`.
+- [x] **Logic verified via ATP**: workspace hashes computed for all 4 repos; `any_drift` bool correctly set.
+
+**Verification Date**: 2026-02-25
+**Status**: ✅ COMPLETE (GUI rebuild pending next `--repair`)

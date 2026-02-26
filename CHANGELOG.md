@@ -93,4 +93,18 @@
 - **Safe Command Execution**: The Injector now uses the robust `mcp-surgeon` wrapper instead of raw python calls.
 
 ---
-*Status: Stable Release (v3.2.10)*
+
+## [3.3.5] - 2026-02-25
+
+### Fixed
+- **Observer `--help` PermissionError (GAP-003/GAP-004)**: `mcp_inventory/config.py` now uses a `tempfile` fallback in `_resolve_app_dir()` instead of `Path.cwd()`; the function no longer raises `PermissionError` when run outside the managed venv. Project-wide ATP compliance score: `🎉 [VERIFIED]` (all four components green).
+- **Stale `--sync / --update` Reference**: `bootstrap.py` help text updated to `--repair` to match the unified command introduced in v3.3.4. `gui_bridge.py` error messages updated to `mcp-activator --repair`.
+
+### Added
+- **Drift Detection Endpoint (`/system/drift`)**: New `GET /system/drift` route in `gui_bridge.py`. Computes SHA-256 sentinel-file hashes for each repo (workspace source vs `~/.mcp-tools` mirror) and returns `{ any_drift, repair_command, repos[] }`. Closes GAP-R2.
+- **Drift Banner in GUI (`App.tsx`)**: Amber fixed-position banner renders when `driftReport.any_drift` is `true`. Shows impacted repos, diff detail, and `mcp-activator --repair` command inline. Polls every 60 s. Closes GAP-R2 visually.
+- **Test Coverage**: `test_cli_smoke.py` `test_bootstrap_help` now passes (`--repair` verified in help output). All 6 Observer smoke tests green.
+
+---
+*Status: Production Ready (v3.3.5)*
+
