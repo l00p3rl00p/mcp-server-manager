@@ -148,8 +148,12 @@ from __future__ import annotations
 import json
 import sys
 import time
+import logging
 import warnings
 from typing import Any, Dict, Optional
+
+# Configure logging to stderr for debugging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", stream=sys.stderr)
 
 SERVER_NAME = {target_path.name!r}
 SERVER_VERSION = "0.1.0-forged"
@@ -191,7 +195,9 @@ def main():
         line = sys.stdin.readline()
         if not line: break
         try: req = json.loads(line)
-        except: continue
+        except json.JSONDecodeError as e:
+            logging.error(f"Failed to parse JSON from client: {{e}}", exc_info=True)
+            continue
         resp = handle_request(req)
         if resp: sys.stdout.write(json.dumps(resp) + "\\n"); sys.stdout.flush()
 
@@ -209,10 +215,14 @@ from __future__ import annotations
 import json
 import sys
 import time
+import logging
 import re
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+# Configure logging to stderr for debugging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", stream=sys.stderr)
 
 SERVER_NAME = {target_path.name!r}
 ROOT = Path(__file__).parent.resolve()
@@ -280,7 +290,9 @@ def main():
         line = sys.stdin.readline()
         if not line: break
         try: req = json.loads(line)
-        except: continue
+        except json.JSONDecodeError as e:
+            logging.error(f"Failed to parse JSON from client: {{e}}", exc_info=True)
+            continue
         resp = handle_request(req)
         if resp: sys.stdout.write(json.dumps(resp) + "\\n"); sys.stdout.flush()
 

@@ -138,7 +138,8 @@ try:
     except Exception:
         # In restricted/sandboxed environments we may not be allowed to write to ~/.mcpinv.
         session_logger = None
-except:
+except OSError as e:
+    logger.error(f"OS error: {e}", exc_info=True)
     session_logger = None
 
 if session_logger is not None:
@@ -1402,7 +1403,8 @@ def injector_status():
                     parts = line.split()
                     if len(parts) >= 2:
                         clients.append(parts[1].lower())
-    except:
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Process error: {e}", exc_info=True)
         # Fallback if detection fails
         clients = ["claude", "vscode", "cursor", "windsurf"]
 

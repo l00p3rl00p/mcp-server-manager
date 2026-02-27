@@ -30,7 +30,8 @@ def get_logs():
             for line in lines:
                 try:
                     logs.append(json.loads(line))
-                except:
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON parse error: {e}", exc_info=True)
                     continue
         return jsonify(logs)
     except Exception as e:
@@ -55,7 +56,8 @@ def get_status():
                         "status": "online" if "runtime" in s_data else "stopped",
                         "type": s_data.get("type", "generic")
                     })
-        except:
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parse error: {e}", exc_info=True)
             pass
 
     def is_running(pattern):
@@ -63,7 +65,8 @@ def get_status():
             # Simple pgrep check
             result = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True)
             return result.returncode == 0
-        except:
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parse error: {e}", exc_info=True)
             return False
 
     # Check for core components
@@ -82,7 +85,8 @@ def get_status():
             if count > 0:
                 has_watcher = True
             conn.close()
-        except:
+        except OSError as e:
+            logger.error(f"OS error: {e}", exc_info=True)
             pass
 
     return jsonify({

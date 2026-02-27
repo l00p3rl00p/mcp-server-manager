@@ -53,7 +53,18 @@ Transform any local folder or Git repository into a hardened MCP server.
 
 ---
 
+## 🔄 Drift Lifecycle Integration (v3.3.6+)
+
+The Observer integrates with the Drift Lifecycle system:
+- **Health Monitoring**: Tracks server health during drift detection
+- **Forge Management**: Creates MCP servers compatible with drift detection
+- **Deployment Visibility**: Shows deployed vs origin state in dashboard
+
+See main repo: [Drift Lifecycle System](../DRIFT_LIFECYCLE_OUTCOMES.md)
+
+---
+
 ## 📝 Metadata
-* **Status**: Stable Release (v3.3)*
+* **Status**: Stable Release (v3.3.6)
 * **GUI Port**: 5001
 * **Part of**: The Workforce Nexus Suite

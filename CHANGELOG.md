@@ -1,3 +1,12 @@
+## [3.3.6] - 2026-02-27 (Drift Lifecycle Integration)
+
+### Added
+- Integrated with Drift Lifecycle system (v3.3.6)
+- Safe multi-target deployment support
+- Hash-based state management compatibility
+
+---
+
 # Changelog - MCP Observer (mcp-server-manager)
 
 ## [3.3.4] - 2026-02-25

@@ -384,7 +384,8 @@ class MCPInvHandler(http.server.SimpleHTTPRequestHandler):
                         self.send_error(400, "Invalid server path")
                         return
                     server_path = str(p)
-            except:
+            except OSError as e:
+                logger.error(f"OS error: {e}", exc_info=True)
                 pass
 
         # Run in a separate thread/process to not block server

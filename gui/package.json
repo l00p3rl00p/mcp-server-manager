@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "postbuild": "python3 ../sync_webmcp.py",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:e2e": "node ./scripts/run_e2e.mjs"

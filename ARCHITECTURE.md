@@ -32,6 +32,64 @@ A high-performance React + Vite dashboard.
 * **Micro-Animations**: Provides instant visual feedback for server state changes.
 - **Token HUD**: Displays the "Token Weight" of every interaction using heuristic estimation.
 
+### 5. WebMCP Wrapper (`webmcp_server.py` + `sync_webmcp.py`)
+An MCP stdio server (v2.0.0) that exposes the entire GUI backend as agent-callable tools with a **dynamic, self-updating capability registry**.
+
+* **Protocol**: JSON-RPC 2.0 over stdin/stdout (MCP spec, `2024-11-05`).
+* **Backend**: Proxies calls to `gui_bridge.py` at `http://127.0.0.1:5001` (configurable via `GUI_BASE_URL` env var).
+* **Two-tier tool registry**: Static tools (hard-coded, always present) + Dynamic tools (persisted in `webmcp_capabilities.json`, auto-synced on build).
+* **Agent Testing**: Allows any Claude agent to call `gui_status`, `gui_server_control`, `gui_forge`, etc. without a browser — enabling headless regression and UAT workflows.
+* **Registration**: Registered in `~/.claude/settings.json`, `~/.gemini/antigravity/mcp_config.json`, and `~/.codex/config.toml` under key `nexus-gui`.
+
+#### Dynamic Capability Registry (`webmcp_capabilities.json`)
+Tracks all dynamically-registered tools next to `webmcp_server.py` (version-controlled).
+
+**Post-build auto-sync flow:**
+```
+npm run build
+  └─ tsc -b && vite build    ← compiles React/TS
+  └─ postbuild               ← runs sync_webmcp.py automatically
+       └─ GET /capabilities  ← asks Flask for its live route map
+       └─ diff vs registry   ← adds new routes, removes stale ones
+       └─ writes webmcp_capabilities.json
+```
+
+**Manual registry management via meta-tools:**
+| Meta-tool | Purpose |
+|---|---|
+| `gui_sync_capabilities` | Fetch live Flask routes and reconcile registry |
+| `gui_register_tool` | Manually add a new dynamic tool |
+| `gui_unregister_tool` | Remove a dynamic tool (static tools protected) |
+| `gui_list_registry` | List all tools, labelled static vs dynamic |
+
+#### GUI Bridge Capabilities Endpoint (`GET /capabilities`)
+Returns the full live Flask route map as machine-readable JSON — consumed by `sync_webmcp.py` and `gui_sync_capabilities` tool.
+
+#### Static Tool Surface (always present)
+| Tool | Endpoint | Purpose |
+|---|---|---|
+| `gui_health` | `GET /health` | Liveness check |
+| `gui_status` | `GET /status` | Full system + server inventory |
+| `gui_validate` | `GET /validate` | Config validation |
+| `gui_system_drift` | `GET /system/drift` | Drift detection |
+| `gui_logs` | `GET /logs` | Session log tail |
+| `gui_server_logs` | `GET /server/logs/:id` | Per-server stdout/stderr |
+| `gui_server_control` | `POST /server/control` | start / stop / restart |
+| `gui_server_add` | `POST /server/add` | Register new server |
+| `gui_server_delete` | `POST /server/delete` | Remove server |
+| `gui_server_update` | `POST /server/update/:id` | Edit server metadata |
+| `gui_nexus_catalog` | `GET /nexus/catalog` | Browse installable servers |
+| `gui_nexus_run` | `POST /nexus/run` | Run catalog command |
+| `gui_injector_clients` | `GET /injector/clients` | Detected MCP clients |
+| `gui_injector_status` | `POST /injector/status` | Toggle server in a client |
+| `gui_forge` | `POST /forge` | Scaffold new MCP server |
+| `gui_forge_status` | `GET /forge/status/:id` | Poll forge task |
+| `gui_librarian_roots` | `GET/POST/DELETE /librarian/roots` | Watched directories |
+| `gui_librarian_add` | `POST /librarian/add` | Index resource |
+| `gui_project_history` | `GET /project/history` | Change history |
+| `gui_project_snapshot` | `POST /project/snapshot` | Take snapshot |
+| `gui_export_report` | `GET /export/report` | HTML status report |
+
 ---
 
 ## 🔍 Data Flow: The Observation Loop
