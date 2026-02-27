@@ -1560,85 +1560,50 @@ def nexus_help():
 @app.route('/system/update/python', methods=['POST'])
 def system_update_python():
     """
-    Upgrade Python dependencies for the active project (developer workspace).
-
-    This is a system-level action used by the GUI "Doctor"/maintenance flow. It is scoped
-    to the current project directory and does not modify other unrelated environments.
+    Upgrade Python dependencies for the active project.
+    Delegates to mcp-activator --repair so CLI fixes propagate to GUI automatically (GUI/CLI parity).
     """
     try:
         payload = request.get_json(silent=True) or {}
         dry_run = bool(payload.get("dry_run"))
 
-        # Support server-specific path/id in the system route, or default to Nexus venv.
-        server_id = payload.get("server_id")
-        repo_path = payload.get("path")
-
-        repo = Path.cwd()
-        if repo_path:
-            repo = Path(repo_path).expanduser().resolve()
-        elif server_id:
-            inv = pm.get_inventory()
-            target = next((s for s in inv.get("servers", []) if str(s.get("id")) == str(server_id)), None)
-            if target and target.get("path"):
-                repo = Path(target["path"]).expanduser().resolve()
-        elif pm.active_project and pm.active_project.get("path"):
-            repo = Path(pm.active_project["path"]).expanduser().resolve()
-
-        # Always prefer a per-server venv if this is a server-scoped call,
-        # otherwise use the central Nexus venv.
-        candidates = []
-        if repo != Path.cwd():
-            candidates.extend([
-                repo / ".venv" / "bin" / "python3",
-                repo / "venv" / "bin" / "python3",
-            ])
-        candidates.append(NEXUS_HOME / ".venv" / "bin" / "python3")
-
-        py_path = next((p for p in candidates if p.exists()), Path(sys.executable))
-        py = str(py_path)
-
-        if (repo / "pyproject.toml").exists():
-            cmd = [py, "-m", "pip", "install", "--upgrade", "-e", "."]
-            mode = "pyproject"
-        elif (repo / "requirements.txt").exists():
-            cmd = [py, "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"]
-            mode = "requirements"
-        else:
-            cmd = [py, "-m", "pip", "install", "--upgrade", "pip"]
-            mode = "pip-only"
+        binary_path = pm.bin_dir / "mcp-activator"
+        cmd = [str(binary_path), "--repair"]
 
         if dry_run:
-            return jsonify({"success": True, "dry_run": True, "cmd": cmd, "cwd": str(repo), "mode": mode})
+            return jsonify({"success": True, "dry_run": True, "cmd": cmd})
 
-        # Write logs under app_data_dir to keep side-effects inside the Nexus-managed state
-        # (and keep tests/sandboxing deterministic).
+        if not binary_path.exists():
+            return jsonify({"success": False, "error": "mcp-activator not found. Run nexus.sh to install."}), 503
+
         log_root = pm.app_data_dir / "upgrades"
         log_root.mkdir(parents=True, exist_ok=True)
         stamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         log_path = log_root / f"system_python_update_{stamp}.log"
         with open(log_path, "w") as f:
-            f.write("=== Nexus System Python Update ===\n")
-            f.write(f"repo: {repo}\n")
-            f.write(f"python: {py}\n")
-            f.write(f"mode: {mode}\n")
+            f.write("=== Nexus System Python Update (via mcp-activator --repair) ===\n")
             f.write(f"cmd: {' '.join(shlex.quote(x) for x in cmd)}\n\n")
         with open(log_path, "a") as f:
-            subprocess.Popen(cmd, cwd=str(repo), stdout=f, stderr=subprocess.STDOUT, text=True)
+            subprocess.Popen(
+                cmd,
+                stdout=f, stderr=subprocess.STDOUT, text=True,
+                env={**os.environ, "NEXUS_PROJECT_PATH": str(pm.active_project.get("path", ""))},
+            )
         if session_logger:
             session_logger.log(
                 "COMMAND",
-                "System python update initiated",
-                suggestion="Upgrade running in background. Open Log Browser to view the update log.",
-                metadata={"cmd": cmd, "cwd": str(repo), "mode": mode, "log_path": str(log_path)},
+                "System python update initiated via mcp-activator --repair",
+                suggestion="Upgrade running in background. Open Log Browser to view.",
+                metadata={"cmd": cmd, "log_path": str(log_path)},
             )
-        return jsonify({"success": True, "message": "System python update initiated in background.", "cmd": cmd, "cwd": str(repo), "mode": mode, "log_path": str(log_path)})
+        return jsonify({"success": True, "message": "System python update initiated in background.", "cmd": cmd, "log_path": str(log_path)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 @app.route('/server/update/<server_id>', methods=['POST'])
 def server_update_python(server_id: str):
-    """Upgrade a specific managed MCP server's Python environment (server-scoped, not global)."""
+    """Upgrade a specific managed MCP server's Python environment via mcp-activator --repair."""
     import yaml
 
     try:
@@ -1655,76 +1620,44 @@ def server_update_python(server_id: str):
         if not server_path:
             return jsonify({"success": False, "error": f"Server path missing for id: {server_id}"}), 400
 
-        # Determine interpreter preference:
-        # 1) server-local venv
-        # 2) Nexus venv
-        # 3) current bridge python
-        candidates = [
-            server_path / ".venv" / "bin" / "python3",
-            server_path / "venv" / "bin" / "python3",
-            NEXUS_HOME / ".venv" / "bin" / "python3",
-            Path(sys.executable),
-        ]
-        py = next((p for p in candidates if p.exists()), Path(sys.executable))
-
-        if (server_path / "pyproject.toml").exists():
-            cmd = [str(py), "-m", "pip", "install", "--upgrade", "-e", "."]
-            mode = "pyproject"
-        elif (server_path / "requirements.txt").exists():
-            cmd = [str(py), "-m", "pip", "install", "--upgrade", "-r", "requirements.txt"]
-            mode = "requirements"
-        else:
-            cmd = [str(py), "-m", "pip", "install", "--upgrade", "pip"]
-            mode = "pip-only"
+        binary_path = pm.bin_dir / "mcp-activator"
+        cmd = [str(binary_path), "--repair"]
 
         if dry_run:
-            return jsonify(
-                {
-                    "success": True,
-                    "dry_run": True,
-                    "server_id": server_id,
-                    "server_path": str(server_path),
-                    "python": str(py),
-                    "cmd": cmd,
-                    "mode": mode,
-                }
-            )
+            return jsonify({
+                "success": True, "dry_run": True,
+                "server_id": server_id, "server_path": str(server_path), "cmd": cmd,
+            })
+
+        if not binary_path.exists():
+            return jsonify({"success": False, "error": "mcp-activator not found. Run nexus.sh to install."}), 503
 
         log_root = MCPINV_HOME / "upgrades"
         log_root.mkdir(parents=True, exist_ok=True)
         stamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         log_path = log_root / f"server_{server_id}_upgrade_{stamp}.log"
         with open(log_path, "w") as f:
-            f.write("=== Nexus Server Upgrade ===\n")
-            f.write(f"server_id: {server_id}\n")
-            f.write(f"server_path: {server_path}\n")
-            f.write(f"python: {py}\n")
-            f.write(f"mode: {mode}\n")
+            f.write("=== Nexus Server Upgrade (via mcp-activator --repair) ===\n")
+            f.write(f"server_id: {server_id}\nserver_path: {server_path}\n")
             f.write(f"cmd: {' '.join(shlex.quote(x) for x in cmd)}\n\n")
-
         with open(log_path, "a") as f:
-            subprocess.Popen(cmd, cwd=str(server_path), stdout=f, stderr=subprocess.STDOUT, text=True)
-
+            subprocess.Popen(
+                cmd, cwd=str(server_path),
+                stdout=f, stderr=subprocess.STDOUT, text=True,
+            )
         if session_logger:
             session_logger.log(
                 "COMMAND",
-                f"Server pip upgrade initiated: {server_id}",
-                suggestion="Upgrade running in background. View logs in Log Browser → lifecycle (server) or audit.",
+                f"Server upgrade initiated: {server_id}",
+                suggestion="Upgrade running in background. View logs in Log Browser.",
                 metadata={"server_id": server_id, "cmd": cmd, "cwd": str(server_path), "log_path": str(log_path)},
             )
-
-        return jsonify(
-            {
-                "success": True,
-                "message": f"Server upgrade initiated in background: {server_id}",
-                "server_id": server_id,
-                "server_path": str(server_path),
-                "python": str(py),
-                "cmd": cmd,
-                "mode": mode,
-                "log_path": str(log_path),
-            }
-        )
+        return jsonify({
+            "success": True,
+            "message": f"Server upgrade initiated in background: {server_id}",
+            "server_id": server_id, "server_path": str(server_path),
+            "cmd": cmd, "log_path": str(log_path),
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -2828,6 +2761,61 @@ def system_drift():
         "repair_command": "mcp-activator --repair",
         "repos": results,
     })
+
+@app.route('/capabilities', methods=['GET'])
+def capabilities():
+    """Return all live Flask routes as a machine-readable capability manifest.
+
+    Used by webmcp_server.py to auto-sync its tool registry after a GUI rebuild.
+    Each entry includes the HTTP methods, a slug derived from the path, and an
+    inferred description so the MCP wrapper can register a matching tool without
+    manual configuration.
+
+    Query params:
+        include_static (bool, default false) – include the static asset routes
+    """
+    include_static = request.args.get("include_static", "false").lower() == "true"
+
+    # Paths that are internal plumbing and should not be surfaced as agent tools
+    EXCLUDED_PREFIXES = ["/static", "/<path", "/", "/os/"]
+
+    routes = []
+    for rule in app.url_map.iter_rules():
+        path = rule.rule
+        methods = sorted(m for m in rule.methods if m not in ("HEAD", "OPTIONS"))
+
+        # Skip excluded paths and static asset routes unless requested
+        if any(path.startswith(p) for p in EXCLUDED_PREFIXES):
+            if not include_static:
+                continue
+
+        # Build a clean slug: /server/logs/<server_id> → gui_server_logs_by_id
+        slug = path.strip("/").replace("/", "_").replace("<", "").replace(">", "")
+        slug = "gui_" + slug if slug else "gui_root"
+        # Replace consecutive underscores introduced by param stripping
+        import re as _re
+        slug = _re.sub(r"_+", "_", slug).strip("_")
+
+        # Infer a human description from method + path
+        primary_method = methods[0] if methods else "GET"
+        readable_path = path.strip("/")
+        description = f"{primary_method} {readable_path}"
+
+        routes.append({
+            "path": path,
+            "methods": methods,
+            "slug": slug,
+            "description": description,
+            "has_path_params": "<" in path,
+        })
+
+    routes.sort(key=lambda r: r["path"])
+    return jsonify({
+        "total": len(routes),
+        "bridge_version": __version__,
+        "routes": routes,
+    })
+
 
 if __name__ == '__main__':
     # ── Do not run gui_bridge.py directly ──────────────────────────────────

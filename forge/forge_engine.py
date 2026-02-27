@@ -30,7 +30,7 @@ class ForgeEngine:
         else:
             self.inventory_path = self.forge_root.parent / "mcp-server-manager" / "inventory.yaml"
 
-    def forge(self, source: str, target_name: Optional[str] = None) -> Path:
+    def forge(self, source: str, target_name: Optional[str] = None, stack: Optional[str] = None) -> Path:
         """
         Main entry point for forging a server.
         source: A local path or a Git URL.
@@ -69,7 +69,7 @@ class ForgeEngine:
         # self._verify_logic(target_path) # Disabled for stability in v3.1.0 (requires hot reload of modules)
 
         # 7. Register with Inventory
-        self._register_inventory(target_path, source, target_name)
+        self._register_inventory(target_path, source, target_name, stack=stack)
         
         print(f"✅ Forge Complete: Server '{target_name}' is ready at {target_path}")
         return target_path
@@ -295,7 +295,7 @@ if __name__ == "__main__":
         if not (target_path / "ATP_COMPLIANCE_GUIDE.md").exists():
             (target_path / "ATP_COMPLIANCE_GUIDE.md").write_text("# ATP Compliance Guide\n\nThis server is ATP-compliant via Nexus Forge.")
         
-    def _register_inventory(self, target_path: Path, source: str, name: str):
+    def _register_inventory(self, target_path: Path, source: str, name: str, stack: Optional[str] = None):
         """Registers the forged server in the suite's inventory."""
         if not self.inventory_path.parent.exists():
             self.inventory_path.parent.mkdir(parents=True, exist_ok=True)
@@ -310,7 +310,11 @@ if __name__ == "__main__":
 
         # Update or Append
         existing = next((s for s in inventory["servers"] if s.get("id") == name), None)
-        
+
+        # Prefer the installed binary wrapper; fall back to raw script for dev environments.
+        _installed_bin = Path.home() / ".mcp-tools" / "bin" / name
+        _start_cmd = str(_installed_bin) if _installed_bin.exists() else f"{sys.executable} mcp_server.py"
+
         entry = {
             "id": name,
             "name": name,
@@ -319,11 +323,13 @@ if __name__ == "__main__":
             "type": "forged",
             "status": "ready",
             "run": {
-                "start_cmd": f"{sys.executable} mcp_server.py",
+                "start_cmd": _start_cmd,
                 "stop_cmd": "pkill -f mcp_server.py" # Simple default
             },
-            "tags": ["forged", "nexus-v3"]
+            "tags": ["forged", "nexus-v3"],
         }
+        if stack:
+            entry["stack"] = stack
 
         if existing:
             existing.update(entry)
